@@ -45,24 +45,55 @@ export async function lastIngestAt(): Promise<number> {
   }
 }
 
-export async function readLiveCrime(since?: string): Promise<CrimeIncident[]> {
-  if (mem?.incidents.length) {
-    return since ? mem.incidents.filter((r) => (r.date ?? "") >= since) : mem.incidents;
-  }
+export async function readStoredCrime(since?: string): Promise<CrimeIncident[]> {
   try {
     const sql = await sqlOrNull();
-    if (!sql) return [];
+    if (!sql) return mem?.incidents ?? [];
     const rows = since
       ? await sql<Record<string, unknown>>`select * from crime_live where date >= ${since} order by date desc`
       : await sql<Record<string, unknown>>`select * from crime_live order by date desc`;
     return rows.map(rowToIncident);
   } catch {
-    return [];
+    return mem?.incidents ?? [];
   }
 }
 
+export async function readLiveCrime(since?: string): Promise<CrimeIncident[]> {
+  if (mem?.incidents.length) {
+    return since ? mem.incidents.filter((r) => (r.date ?? "") >= since) : mem.incidents;
+  }
+  return readStoredCrime(since);
+}
+
+function prefer(old: CrimeIncident, next: CrimeIncident): CrimeIncident {
+  const nextHasStreet = /\d/.test(next.address || "");
+  const oldHasStreet = /\d/.test(old.address || "");
+  const address = nextHasStreet || !oldHasStreet ? next.address : old.address;
+  const lat = nextHasStreet || !oldHasStreet ? next.lat : old.lat;
+  const lon = nextHasStreet || !oldHasStreet ? next.lon : old.lon;
+  const official = next.source !== "News" || old.source === "News";
+  return {
+    ...old,
+    address,
+    lat,
+    lon,
+    zip: next.zip || old.zip,
+    type: official ? next.type : old.type,
+    offense: next.offense || old.offense,
+    killed: official ? next.killed : old.killed,
+    injured: Math.max(old.injured, next.injured),
+  };
+}
+
 export async function writeLiveCrime(rows: CrimeIncident[]) {
-  mem = { at: Date.now(), incidents: rows };
+  const prior = mem?.incidents?.length ? mem.incidents : await readStoredCrime();
+  const have = new Map(prior.map((r) => [r.id, r]));
+  for (const r of rows) {
+    const old = have.get(r.id);
+    have.set(r.id, old ? prefer(old, r) : r);
+  }
+  const merged = [...have.values()];
+  mem = { at: Date.now(), incidents: merged };
   if (!rows.length) return 0;
   const sql = await sqlOrNull();
   if (!sql) return rows.length;
@@ -93,7 +124,15 @@ export async function writeLiveCrime(rows: CrimeIncident[]) {
       await sql.query(
         `insert into crime_live (id, date, city, county, address, zip, lat, lon, type, offense, source, killed, injured)
          values ${values.join(",")}
-         on conflict (id) do nothing`,
+         on conflict (id) do update set
+           address = excluded.address,
+           lat = excluded.lat,
+           lon = excluded.lon,
+           zip = coalesce(excluded.zip, crime_live.zip),
+           type = excluded.type,
+           offense = excluded.offense,
+           killed = excluded.killed,
+           injured = excluded.injured`,
         params,
       );
     }

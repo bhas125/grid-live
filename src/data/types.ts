@@ -128,7 +128,8 @@ export type LayerId =
   | "p24"
   | "p26"
   | "race"
-  | "crime";
+  | "crime"
+  | "flights";
 
 export type Layers = Record<LayerId, boolean>;
 
@@ -248,6 +249,21 @@ export type CrimeIncident = {
   source: string;
   killed: number;
   injured: number;
+};
+
+export type Flight = {
+  id: string;
+  call: string;
+  reg: string;
+  ac: string;
+  op: string;
+  lat: number;
+  lon: number;
+  alt: number | null;
+  gs: number;
+  hdg: number;
+  ground: boolean;
+  at: number;
 };
 
 export type SorPoint = {

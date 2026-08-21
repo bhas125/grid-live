@@ -10,7 +10,7 @@ const MEM =
   "https://services2.arcgis.com/saWmpKJIUAjyyNVc/arcgis/rest/services/MPD_Public_Safety_Incidents_Mapping/FeatureServer/0/query";
 
 const NEWS_SKIP =
-  /boston|dorchester|south station|probation|daycare|security deposit|penn state|louisville|kentucky|north carolina/i;
+  /boston|dorchester|south station|probation|daycare|security deposit|penn state|louisville|kentucky|north carolina|struck by vehicle|traffic crash|car crash|cycling team|wreck on/i;
 
 function ymd(ms: number) {
   try {
@@ -121,8 +121,71 @@ function rssDay(raw: string) {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 }
 
+function newsKind(title: string) {
+  const fatal = /homicide|murder|killed|fatal|\bdead\b|dies|died|death of/i.test(title);
+  if (fatal) {
+    return {
+      type: "Homicide" as const,
+      killed: 1,
+      offense: /shot|gun|shooting/i.test(title) ? "Gun homicide" : "Homicide",
+    };
+  }
+  return {
+    type: "Shooting" as const,
+    killed: 0,
+    offense: /officer-involved|officer involved/i.test(title) ? "Officer-involved shooting" : "Shooting",
+  };
+}
+
+function newsPlace(title: string, county: string) {
+  const street = title.match(
+    /\b\d{1,5}\s+[\w.'-]+(?:\s[\w.'-]+){0,3}\s(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|blvd|highway|hwy|pike|way|circle|cir|court|ct|parkway|pkwy)\b/i,
+  );
+  if (street) return `${street[0]}, ${county} County, TN`;
+  const city = title.match(/\b(?:in|near|at)\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)(?:\s|,|$)/);
+  if (city) return `${city[1]}, ${county} County, TN`;
+  return "";
+}
+
+async function geocodeTn(q: string): Promise<{ lat: number; lon: number; label?: string } | null> {
+  const addr = /tn\b|tennessee/i.test(q) ? q : `${q}, Tennessee`;
+  try {
+    const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(addr)}&benchmark=Public_AR_Current&format=json`;
+    const res = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(4000) });
+    if (res.ok) {
+      const json = (await res.json()) as {
+        result?: { addressMatches?: { matchedAddress?: string; coordinates?: { x?: number; y?: number } }[] };
+      };
+      const m = json.result?.addressMatches?.[0];
+      const lat = m?.coordinates?.y;
+      const lon = m?.coordinates?.x;
+      if (typeof lat === "number" && typeof lon === "number" && lat >= 34.8 && lat <= 36.8 && lon >= -90.5 && lon <= -81.4) {
+        return { lat, lon, label: m?.matchedAddress };
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q=${encodeURIComponent(addr)}`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { display_name?: string; lat?: string; lon?: string }[];
+    const m = json[0];
+    const lat = Number(m?.lat);
+    const lon = Number(m?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < 34.8 || lat > 36.8 || lon < -90.5 || lon > -81.4) return null;
+    return { lat, lon, label: m?.display_name };
+  } catch {
+    return null;
+  }
+}
+
 async function fromNews(): Promise<CrimeIncident[]> {
-  const q = `Tennessee (homicide OR "fatal shooting" OR "shot and killed" OR "officer-involved") when:3d`;
+  const q = `Tennessee (homicide OR murder OR "fatal shooting" OR "shot and killed" OR shooting OR "officer-involved") when:5d`;
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
   try {
     const res = await fetch(url, {
@@ -133,34 +196,49 @@ async function fromNews(): Promise<CrimeIncident[]> {
     const xml = await res.text();
     const out: CrimeIncident[] = [];
     const seen = new Set<string>();
-    for (const chunk of xml.split(/<item>/i).slice(1).slice(0, 24)) {
+    let geoLeft = 8;
+    for (const chunk of xml.split(/<item>/i).slice(1).slice(0, 28)) {
       const title = decode((chunk.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? "").trim());
       const pub = decode((chunk.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1] ?? "").trim());
       if (!title) continue;
       if (NEWS_SKIP.test(title)) continue;
-      if (!/homicide|killed|fatal shooting|shot and killed|murder|officer-involved/i.test(title)) continue;
-      if (!/tennessee|\btn\b|county|knoxville|memphis|nashville|chattanooga|clarksville/i.test(title)) continue;
+      if (!/homicide|killed|fatal|murder|shooting|shot|officer-involved/i.test(title)) continue;
+      if (!/tennessee|\btn\b|county|knoxville|memphis|nashville|chattanooga|clarksville|murfreesboro/i.test(title)) continue;
       const county = countyFromText(title);
       if (!county) continue;
       if (county === "Shelby" || county === "Davidson") continue;
       const xy = COUNTY_XY[county];
       if (!xy) continue;
       const date = rssDay(pub);
-      const dayKey = `${county}|${date}`;
+      const kind = newsKind(title);
+      const dayKey = `${county}|${date}|${kind.type}`;
       if (seen.has(dayKey)) continue;
       seen.add(dayKey);
+      let lat = xy[0];
+      let lon = xy[1];
+      let address = title.replace(/\s+-\s+[^-]+$/, "").slice(0, 90);
+      const place = newsPlace(title, county);
+      if (place && geoLeft > 0) {
+        geoLeft -= 1;
+        const hit = await geocodeTn(place);
+        if (hit) {
+          lat = hit.lat;
+          lon = hit.lon;
+          if (hit.label && /\d/.test(hit.label)) address = hit.label;
+        }
+      }
       out.push({
-        id: `NEWS-${date}-${county}`,
+        id: `NEWS-${date}-${county}-${kind.type === "Homicide" ? "H" : "S"}`,
         date,
         city: "",
         county,
-        address: title.replace(/\s+-\s+[^-]+$/, "").slice(0, 80),
-        lat: xy[0],
-        lon: xy[1],
-        type: "Homicide",
-        offense: /shooting|gun|shot/i.test(title) ? "Gun homicide" : "Homicide",
+        address,
+        lat,
+        lon,
+        type: kind.type,
+        offense: kind.offense,
         source: "News",
-        killed: 1,
+        killed: kind.killed,
         injured: 0,
       });
     }
@@ -207,9 +285,9 @@ export async function fetchNewCrime(since?: string): Promise<CrimeIncident[]> {
   const pd = unique(rows.filter((r) => r.source !== "News"));
   const seenDay = new Set(pd.filter((r) => r.type === "Homicide").map((r) => `${r.county}|${r.date}`));
   for (const n of rows.filter((r) => r.source === "News")) {
-    if (seenDay.has(`${n.county}|${n.date}`)) continue;
+    if (n.type === "Homicide" && seenDay.has(`${n.county}|${n.date}`)) continue;
     pd.push(n);
-    seenDay.add(`${n.county}|${n.date}`);
+    if (n.type === "Homicide") seenDay.add(`${n.county}|${n.date}`);
   }
   return unique(pd);
 }

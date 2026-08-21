@@ -281,7 +281,7 @@ function CrimeFeed({
       <p className="px-4 pb-2 font-mono text-xs leading-relaxed tracking-wide text-muted">
         {county
           ? (intel?.crimeNote ?? `${county.name} · 2026 homicide / shooting points.`)
-          : "2026 homicide / shooting points. Official Memphis, Nashville, and Chattanooga records plus Gun Violence Archive (through June 30) for the rest of the state. Hover a spot for type, date, address, and ZIP."}
+          : "2026 homicide / shooting points. MNPD, MPD, and CPD records plus GVA (through June 30). New points layer on twice a day from police feeds and statewide news, geocoded when an address is in the story. Hover a spot for type, date, address, and ZIP."}
       </p>
       {!incidents.length ? (
         <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">

@@ -10,6 +10,7 @@ const ITEMS: { id: LayerId; label: string }[] = [
   { id: "sites", label: "Data Cent." },
   { id: "flock", label: "Flock" },
   { id: "cameras", label: "Traffic Cam" },
+  { id: "flights", label: "Flights" },
 ];
 
 export function LayerToggles({

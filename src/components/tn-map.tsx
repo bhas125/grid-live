@@ -13,6 +13,7 @@ import type {
   CrimeLayers,
   CrimeNames,
   CrimePerson,
+  Flight,
   GeoFeature,
   Layers,
   Precinct,
@@ -87,6 +88,7 @@ type Hit = {
   crime?: CrimeIncident;
   cam?: TrafficCam;
   sor?: SorPoint;
+  flight?: Flight;
 };
 
 type Tip = {
@@ -216,6 +218,47 @@ function crimeHud(c: CrimeIncident) {
     a: `${c.type}${when ? ` · ${when}` : ""}`,
     b: zip ? `${where} · ${zip}` : where,
   };
+}
+
+function flightHud(f: Flight) {
+  const alt = f.ground || f.alt == null ? "On ground" : `${Math.round(f.alt).toLocaleString()} ft`;
+  const spd = f.gs ? `${Math.round(f.gs)} kt` : "";
+  const hdg = f.gs || !f.ground ? `HDG ${String(Math.round(f.hdg) % 360).padStart(3, "0")}` : "";
+  const bits = [alt, spd, hdg].filter(Boolean);
+  const who = [f.call, f.ac || f.reg].filter(Boolean).join(" · ");
+  return { a: who, b: bits.join(" · ") };
+}
+
+function deadReckon(f: Flight, now: number) {
+  const dt = Math.min(14, Math.max(0, (now - f.at) / 1000));
+  if (f.ground || f.gs < 4 || dt === 0) return { lat: f.lat, lon: f.lon };
+  const rad = (f.hdg * Math.PI) / 180;
+  const nm = (f.gs / 3600) * dt;
+  return {
+    lat: f.lat + (nm * Math.cos(rad)) / 60,
+    lon: f.lon + (nm * Math.sin(rad)) / (60 * Math.max(0.2, Math.cos((f.lat * Math.PI) / 180))),
+  };
+}
+
+function drawPlane(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  hdg: number,
+  size: number,
+) {
+  const rad = (hdg * Math.PI) / 180;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rad);
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.lineTo(size * 0.72, size * 0.95);
+  ctx.lineTo(0, size * 0.38);
+  ctx.lineTo(-size * 0.72, size * 0.95);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 function camHref(id: number) {
@@ -350,6 +393,8 @@ export function TnMap({
   const [tip, setTip] = useState<Tip | null>(null);
   const [hoverZip, setHoverZip] = useState<{ a: string; b: string } | null>(null);
   const [hoverCrime, setHoverCrime] = useState<{ a: string; b: string } | null>(null);
+  const [hoverFlight, setHoverFlight] = useState<{ a: string; b: string } | null>(null);
+  const [flights, setFlights] = useState<Flight[]>([]);
   const [picked, setPicked] = useState<{
     crime: CrimeIncident;
     names: CrimeNames | null | undefined;
@@ -424,6 +469,37 @@ export function TnMap({
       live = false;
     };
   }, [layers.cameras]);
+
+  useEffect(() => {
+    if (!layers.flights) {
+      setHoverFlight(null);
+      return;
+    }
+    let live = true;
+    const pull = () => {
+      fetch("/api/flights")
+        .then((r) => r.json())
+        .then((d: { flights?: Flight[] }) => {
+          if (!live) return;
+          const next = Array.isArray(d.flights) ? d.flights : [];
+          const now = Date.now();
+          setFlights((prev) => {
+            const fresh = new Map(next.map((f) => [f.id, { ...f, at: now }]));
+            for (const f of prev) {
+              if (!fresh.has(f.id) && now - f.at < 22_000) fresh.set(f.id, f);
+            }
+            return [...fresh.values()];
+          });
+        })
+        .catch(() => undefined);
+    };
+    pull();
+    const tick = window.setInterval(pull, 8_000);
+    return () => {
+      live = false;
+      window.clearInterval(tick);
+    };
+  }, [layers.flights]);
 
   useEffect(() => {
     if (!showSor) return;
@@ -588,6 +664,10 @@ export function TnMap({
   camsOnRef.current = layers.cameras;
   const sitesOnRef = useRef(layers.sites);
   sitesOnRef.current = layers.sites;
+  const flightsOnRef = useRef(layers.flights);
+  flightsOnRef.current = layers.flights;
+  const flightsRef = useRef(flights);
+  flightsRef.current = flights;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
@@ -705,12 +785,15 @@ export function TnMap({
     const sors = sorPtsRef.current;
     const sites = sitePtsRef.current;
     const sorOn = showSorRef.current;
+    const flightsOn = flightsOnRef.current;
+    const planes = flightsRef.current;
     if (
       (!crimeOn || !pts.length) &&
       (!flockOn || !cameras.length) &&
       (!camsOn || !tdots.length) &&
       (!sorOn || !sors.length) &&
-      (!sitesOn || !sites.length)
+      (!sitesOn || !sites.length) &&
+      !flightsOn
     )
       return;
     const cur = viewRef.current;
@@ -908,7 +991,35 @@ export function TnMap({
       ctx.shadowBlur = 0;
       ctx.shadowColor = "transparent";
     }
+
+    if (flightsOn && planes.length && projectRef.current) {
+      const now = Date.now();
+      const proj = projectRef.current;
+      const size = zoomedNow ? 7.2 : 5.4;
+      ctx.fillStyle = "#3de0ff";
+      ctx.globalAlpha = 0.92;
+      for (const f of planes) {
+        const pos = deadReckon(f, now);
+        const p = proj(pos.lon, pos.lat);
+        const sx = (p.x - cur.x) * s + ox;
+        const sy = (p.y - cur.y) * s + oy;
+        if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
+        ctx.globalAlpha = f.ground ? 0.55 : 0.92;
+        drawPlane(ctx, sx, sy, f.hdg, f.ground ? size * 0.72 : size);
+        if (record) {
+          hits.current.push({
+            title: f.call,
+            lines: [],
+            x: sx,
+            y: sy,
+            r: size + 10,
+            flight: f,
+          });
+        }
+      }
+    }
     ctx.globalAlpha = 1;
+    if (flightsOn) drawRaf.current = requestAnimationFrame(drawDots);
   }
 
   useEffect(() => {
@@ -938,8 +1049,9 @@ export function TnMap({
   }, [showSor]);
 
   useEffect(() => {
-    drawDots();
-  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, crimeLayers]);
+    if (drawRaf.current) cancelAnimationFrame(drawRaf.current);
+    drawRaf.current = requestAnimationFrame(drawDots);
+  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, crimeLayers, flights]);
 
   useEffect(() => {
     const el = root.current;
@@ -1090,14 +1202,14 @@ export function TnMap({
     return Boolean(el.closest("button") || el.closest("a") || el.closest("[data-map-card]"));
   }
 
-  function hitAt(clientX: number, clientY: number) {
+  function hitAt(clientX: number, clientY: number, pickable = false) {
     const box = root.current?.getBoundingClientRect();
     if (!box) return null;
     const mx = clientX - box.left;
     const my = clientY - box.top;
     let best: { h: Hit; d: number } | null = null;
     for (const h of hits.current) {
-      if (!h.crime && !h.cam && !h.sor) continue;
+      if (pickable && !h.crime && !h.cam && !h.sor) continue;
       const d = (h.x - mx) ** 2 + (h.y - my) ** 2;
       if (d <= h.r * h.r && (!best || d < best.d)) best = { h, d };
     }
@@ -1105,7 +1217,7 @@ export function TnMap({
   }
 
   function pickDotAt(clientX: number, clientY: number) {
-    const h = hitAt(clientX, clientY);
+    const h = hitAt(clientX, clientY, true);
     if (h?.cam) {
       stealClick.current = true;
       setTip(null);
@@ -1172,7 +1284,7 @@ export function TnMap({
       onPointerDown={(e) => {
         if (interactiveTarget(e.target)) return;
         if (e.button !== 0) return;
-        if (hitAt(e.clientX, e.clientY)) return;
+        if (hitAt(e.clientX, e.clientY, true)) return;
         if (!selected) return;
         pan.current = { x: e.clientX, y: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y, moved: false };
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -1219,21 +1331,31 @@ export function TnMap({
         if (pan.current) return;
         if (interactiveTarget(e.target)) {
           setHoverCrime(null);
+          setHoverFlight(null);
           return;
         }
         const h = hitAt(e.clientX, e.clientY);
+        if (h?.flight) {
+          setTip(null);
+          setHoverCrime(null);
+          setHoverFlight(flightHud(h.flight));
+          return;
+        }
         if (h?.crime) {
           setTip(null);
+          setHoverFlight(null);
           setHoverCrime(crimeHud(h.crime));
           return;
         }
         setHoverCrime(null);
+        setHoverFlight(null);
         if (h) showTip(e, h.title, h.lines);
       }}
       onMouseLeave={() => {
         if (!pan.current) {
           setTip(null);
           setHoverCrime(null);
+          setHoverFlight(null);
         }
       }}
     >
@@ -1619,16 +1741,17 @@ export function TnMap({
           </div>
         </div>
       ) : null}
-      {hoverCrime ? (
+      {hoverFlight || hoverCrime ? (
         <div
-          data-crime-hud
+          data-crime-hud={hoverCrime ? "" : undefined}
+          data-flight-hud={hoverFlight ? "" : undefined}
           className={cn(
             "pointer-events-none absolute left-1/2 z-20 w-[min(92%,28rem)] -translate-x-1/2 px-2 text-center font-mono text-[10px] leading-tight tracking-wide text-watch uppercase",
             feedHidden ? "bottom-10" : "bottom-1",
           )}
         >
-          <div>{hoverCrime.a}</div>
-          {hoverCrime.b ? <div>{hoverCrime.b}</div> : null}
+          <div>{(hoverFlight ?? hoverCrime)?.a}</div>
+          {(hoverFlight ?? hoverCrime)?.b ? <div>{(hoverFlight ?? hoverCrime)?.b}</div> : null}
         </div>
       ) : null}
       {tip && !picked && !pickedCam && !pickedSor ? (

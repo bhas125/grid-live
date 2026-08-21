@@ -40,6 +40,7 @@ const DEFAULT_LAYERS: Layers = {
   sites: false,
   flock: false,
   cameras: false,
+  flights: false,
   p24: false,
   p26: false,
   race: false,
