@@ -583,6 +583,11 @@ export function TnMap({
     if (!crimeLayers.hom && !crimeLayers.sht) return [] as CrimePt[];
     let rows = selected ? crime.filter((c) => c.county === selected.name) : crime;
     rows = rows.filter((c) => {
+      if (!(c.date ?? "").startsWith("2026")) return false;
+      if (c.source === "News") {
+        const t = `${c.address ?? ""} ${c.offense ?? ""}`;
+        if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
+      }
       const k = kindOf(c.type);
       return k ? crimeLayers[k] : false;
     });

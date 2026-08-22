@@ -1,5 +1,5 @@
 import type { CrimeIncident } from "@/data/types";
-import { COUNTY_XY, countyFromText } from "@/lib/county-xy";
+import { CITY_COUNTY, COUNTY_XY, countyFromText } from "@/lib/county-xy";
 
 const UA = "GridTN/1.0 (tennessee situation monitor; grid.blakehassler.com)";
 const FETCH_MS = 4500;
@@ -121,8 +121,26 @@ function rssDay(raw: string) {
   return d.toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
 }
 
+function newsCounty(title: string) {
+  const re = /\bin ([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/g;
+  let last: string | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(title))) {
+    const hit = CITY_COUNTY[m[1].toLowerCase()];
+    if (hit) last = hit;
+  }
+  return last || countyFromText(title);
+}
+
+function staleNews(title: string) {
+  if (/\b2025\b|\b2024\b/.test(title) && !/\b2026\b/.test(title)) return true;
+  if (/grand jury|indicts|indicted|sentenced|convicted/i.test(title) && /\b2025\b|\b2024\b/.test(title)) return true;
+  return false;
+}
+
 function newsKind(title: string) {
-  const fatal = /homicide|murder|killed|fatal|\bdead\b|dies|died|death of/i.test(title);
+  const attempted = /attempted murder|attempted homicide/i.test(title);
+  const fatal = !attempted && /homicide|murder|killed|fatal|\bdead\b|dies|died|death of/i.test(title);
   if (fatal) {
     return {
       type: "Homicide" as const,
@@ -197,20 +215,21 @@ async function fromNews(): Promise<CrimeIncident[]> {
     const out: CrimeIncident[] = [];
     const seen = new Set<string>();
     let geoLeft = 8;
-    for (const chunk of xml.split(/<item>/i).slice(1).slice(0, 28)) {
+    for (const chunk of xml.split(/<item>/i).slice(1).slice(0, 40)) {
       const title = decode((chunk.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? "").trim());
       const pub = decode((chunk.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1] ?? "").trim());
       if (!title) continue;
       if (NEWS_SKIP.test(title)) continue;
+      if (staleNews(title)) continue;
       if (!/homicide|killed|fatal|murder|shooting|shot|officer-involved/i.test(title)) continue;
       if (!/tennessee|\btn\b|county|knoxville|memphis|nashville|chattanooga|clarksville|murfreesboro/i.test(title)) continue;
-      const county = countyFromText(title);
+      const county = newsCounty(title);
       if (!county) continue;
-      if (county === "Shelby" || county === "Davidson") continue;
+      const kind = newsKind(title);
+      if ((county === "Shelby" || county === "Davidson") && kind.type !== "Homicide") continue;
       const xy = COUNTY_XY[county];
       if (!xy) continue;
       const date = rssDay(pub);
-      const kind = newsKind(title);
       const dayKey = `${county}|${date}|${kind.type}`;
       if (seen.has(dayKey)) continue;
       seen.add(dayKey);

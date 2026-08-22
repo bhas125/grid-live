@@ -162,8 +162,26 @@ function decode(s) {
     .trim();
 }
 
+function newsCounty(title) {
+  const re = /\bin ([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/g;
+  let last = null;
+  let m;
+  while ((m = re.exec(title))) {
+    const hit = CITY_COUNTY[m[1].toLowerCase()];
+    if (hit) last = hit;
+  }
+  return last || countyFromText(title);
+}
+
+function staleNews(title) {
+  if (/\b2025\b|\b2024\b/.test(title) && !/\b2026\b/.test(title)) return true;
+  if (/grand jury|indicts|indicted|sentenced|convicted/i.test(title) && /\b2025\b|\b2024\b/.test(title)) return true;
+  return false;
+}
+
 function newsKind(title) {
-  const fatal = /homicide|murder|killed|fatal|\bdead\b|dies|died|death of/i.test(title);
+  const attempted = /attempted murder|attempted homicide/i.test(title);
+  const fatal = !attempted && /homicide|murder|killed|fatal|\bdead\b|dies|died|death of/i.test(title);
   if (fatal) {
     return {
       type: "Homicide",
@@ -232,18 +250,18 @@ async function fromNews() {
   const out = [];
   const seen = new Set();
   let geoLeft = 8;
-  for (const chunk of xml.split(/<item>/i).slice(1).slice(0, 28)) {
+  for (const chunk of xml.split(/<item>/i).slice(1).slice(0, 40)) {
     const title = decode(chunk.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? "");
     const pub = decode(chunk.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1] ?? "");
-    if (!title || NEWS_SKIP.test(title)) continue;
+    if (!title || NEWS_SKIP.test(title) || staleNews(title)) continue;
     if (!/homicide|killed|fatal|murder|shooting|shot|officer-involved/i.test(title)) continue;
     if (!/tennessee|\btn\b|county|knoxville|memphis|nashville|chattanooga|clarksville|murfreesboro/i.test(title)) continue;
-    const county = countyFromText(title);
+    const county = newsCounty(title);
     const xy = county ? COUNTY_XY[county] : null;
     if (!county || !xy) continue;
-    if (county === "Shelby" || county === "Davidson") continue;
-    const date = rssDay(pub);
     const kind = newsKind(title);
+    if ((county === "Shelby" || county === "Davidson") && kind.type !== "Homicide") continue;
+    const date = rssDay(pub);
     const dayKey = `${county}|${date}|${kind.type}`;
     if (seen.has(dayKey)) continue;
     seen.add(dayKey);
@@ -305,6 +323,11 @@ async function main() {
   for (const r of existing) {
     if (r.source !== "News") continue;
     const kind = newsKind(r.address ?? "");
+    if (staleNews(r.address ?? "")) {
+      r.date = "2025-12-31";
+      recoded += 1;
+      continue;
+    }
     if (r.type === "Homicide" && kind.type === "Shooting") {
       r.type = "Shooting";
       r.killed = 0;

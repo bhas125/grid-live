@@ -41,6 +41,7 @@ const SOURCE_LABEL: Record<string, string> = {
   Nashville_MNPD: "Nashville MNPD",
   Chattanooga_CPD: "Chattanooga CPD",
   GVA: "Gun Violence Archive",
+  News: "Local news",
 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -66,6 +67,24 @@ function kindOf(type: string): CrimeKind | null {
   if (isHomicide(type)) return "hom";
   if (isShooting(type)) return "sht";
   return null;
+}
+
+function is2026(c: CrimeIncident) {
+  return (c.date ?? "").startsWith("2026");
+}
+
+function staleStory(c: CrimeIncident) {
+  const t = `${c.address ?? ""} ${c.offense ?? ""}`;
+  if (c.source !== "News") return false;
+  if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return true;
+  return false;
+}
+
+function prettyAddr(raw: string) {
+  const t = raw.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  if (/^(\d+)\s+\1$/.test(t)) return "";
+  return t;
 }
 
 function Stat({ k, v }: { k: string; v: string }) {
@@ -222,54 +241,50 @@ function CrimeFeed({
   crimeLayers: CrimeLayers;
   onPickCrime?: (c: CrimeIncident) => void;
 }) {
-  const [shown, setShown] = useState(PAGE);
+  const [shownHom, setShownHom] = useState(PAGE);
+  const [shownSht, setShownSht] = useState(PAGE);
   const sentinel = useRef<HTMLDivElement>(null);
   const intel = county ? countyIntel(county.name) : null;
 
   const scoped = useMemo(() => {
-    return county ? incidents.filter((i) => i.county === county.name) : incidents;
+    const rows = county ? incidents.filter((i) => i.county === county.name) : incidents;
+    return rows.filter((i) => is2026(i) && !staleStory(i));
   }, [incidents, county]);
 
-  const list = useMemo(() => {
-    const rows = scoped.filter((i) => {
-      const k = kindOf(i.type);
-      return k ? crimeLayers[k] : false;
-    });
-    return [...rows].sort((a, b) => {
-      const da = a.date ?? "";
-      const db = b.date ?? "";
-      if (da !== db) return db.localeCompare(da);
-      const ha = isHomicide(a.type) ? 0 : 1;
-      const hb = isHomicide(b.type) ? 0 : 1;
-      return ha - hb;
-    });
-  }, [scoped, crimeLayers]);
+  const homList = useMemo(() => {
+    if (!crimeLayers.hom) return [] as CrimeIncident[];
+    return scoped.filter((i) => isHomicide(i.type)).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  }, [scoped, crimeLayers.hom]);
 
-  const stats = useMemo(() => {
-    let hom = 0;
-    let sht = 0;
-    for (const i of scoped) {
-      if (isHomicide(i.type)) hom += 1;
-      else if (isShooting(i.type)) sht += 1;
-    }
-    return { hom, sht, n: hom + sht };
-  }, [scoped]);
+  const shtList = useMemo(() => {
+    if (!crimeLayers.sht) return [] as CrimeIncident[];
+    return scoped.filter((i) => isShooting(i.type)).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  }, [scoped, crimeLayers.sht]);
+
+  const stats = useMemo(
+    () => ({ hom: homList.length, sht: shtList.length, n: homList.length + shtList.length }),
+    [homList, shtList],
+  );
 
   useEffect(() => {
-    setShown(PAGE);
-  }, [county?.name, incidents.length]);
+    setShownHom(PAGE);
+    setShownSht(PAGE);
+  }, [county?.name, incidents.length, crimeLayers.hom, crimeLayers.sht]);
 
   useEffect(() => {
     const el = sentinel.current;
     if (!el) return;
     const io = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) setShown((n) => Math.min(list.length, n + PAGE));
+      if (!entries[0]?.isIntersecting) return;
+      setShownHom((n) => Math.min(homList.length, n + PAGE));
+      setShownSht((n) => Math.min(shtList.length, n + PAGE));
     });
     io.observe(el);
     return () => io.disconnect();
-  }, [list.length]);
+  }, [homList.length, shtList.length]);
 
-  const visible = list.slice(0, shown);
+  const visibleHom = homList.slice(0, shownHom);
+  const visibleSht = shtList.slice(0, shownSht);
 
   return (
     <div>
@@ -281,15 +296,47 @@ function CrimeFeed({
       <p className="px-4 pb-2 font-mono text-xs leading-relaxed tracking-wide text-muted">
         {county
           ? (intel?.crimeNote ?? `${county.name} · 2026 homicide / shooting points.`)
-          : "2026 homicide / shooting points. MNPD, MPD, and CPD records plus GVA (through June 30). New points layer on twice a day from police feeds and statewide news, geocoded when an address is in the story. Hover a spot for type, date, address, and ZIP."}
+          : "Latest 2026 homicides first, then shootings. MNPD, MPD, CPD, GVA, and statewide news."}
       </p>
       {!incidents.length ? (
-        <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">
-          Loading incidents
+        <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">Loading incidents</p>
+      ) : null}
+      {crimeLayers.hom && visibleHom.length ? (
+        <>
+          <div className="px-4 pt-1 font-mono text-[10px] tracking-widest text-hot uppercase">Homicides</div>
+          <CrimeRows rows={visibleHom} onPickCrime={onPickCrime} />
+        </>
+      ) : null}
+      {crimeLayers.sht && visibleSht.length ? (
+        <>
+          <div className="px-4 pt-2 font-mono text-[10px] tracking-widest text-watch uppercase">Shootings</div>
+          <CrimeRows rows={visibleSht} onPickCrime={onPickCrime} />
+        </>
+      ) : null}
+      {incidents.length > 0 && !homList.length && !shtList.length ? (
+        <p className="px-4 py-3 text-sm text-muted">
+          No 2026 homicide / shooting points in this county yet. Official city feeds cover
+          Memphis, Nashville, and Chattanooga; statewide GVA coverage runs through June 30.
         </p>
       ) : null}
-      <ul>
-        {visible.map((it) => (
+      <div ref={sentinel} className="h-4" />
+    </div>
+  );
+}
+
+function CrimeRows({
+  rows,
+  onPickCrime,
+}: {
+  rows: CrimeIncident[];
+  onPickCrime?: (c: CrimeIncident) => void;
+}) {
+  return (
+    <ul>
+      {rows.map((it) => {
+        const addr = prettyAddr(it.address);
+        const where = [it.city, it.county ? `${it.county} County` : "", it.zip].filter(Boolean).join(" · ");
+        return (
           <li key={it.id} className="border-t border-line">
             <button
               type="button"
@@ -300,26 +347,17 @@ function CrimeFeed({
                 <span className={isHomicide(it.type) ? "text-hot" : "text-watch"}>{it.type}</span>
                 <span className="ml-auto text-faint">{fmtCrimeDate(it.date)}</span>
               </div>
-              <div className="mt-0.5 text-sm leading-snug">{it.address}</div>
+              <div className="mt-0.5 text-sm leading-snug">{addr || where || it.type}</div>
               <div className="mt-0.5 font-mono text-xs tracking-wide text-faint uppercase">
-                {it.city}
-                {it.county ? ` · ${it.county}` : ""}
-                {it.zip ? ` · ${it.zip}` : ""}
-                {" · "}
+                {addr ? where : it.county ? `${it.county} County` : ""}
+                {where || addr ? " · " : ""}
                 {SOURCE_LABEL[it.source] ?? it.source}
               </div>
             </button>
           </li>
-        ))}
-      </ul>
-      {incidents.length > 0 && list.length === 0 ? (
-        <p className="px-4 py-3 text-sm text-muted">
-          No 2026 homicide / shooting points in this county yet. Official city feeds cover
-          Memphis, Nashville, and Chattanooga; statewide GVA coverage runs through June 30.
-        </p>
-      ) : null}
-      <div ref={sentinel} className="h-4" />
-    </div>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -499,6 +537,7 @@ export function CrimeShare({
     let ctyHom = 0;
     let ctySht = 0;
     for (const i of incidents) {
+      if (!is2026(i) || staleStory(i)) continue;
       if (isHomicide(i.type)) {
         stateHom += 1;
         if (i.county === county.name) ctyHom += 1;
