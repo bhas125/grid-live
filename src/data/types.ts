@@ -129,7 +129,8 @@ export type LayerId =
   | "p26"
   | "race"
   | "crime"
-  | "flights";
+  | "flights"
+  | "house";
 
 export type Layers = Record<LayerId, boolean>;
 
@@ -166,6 +167,15 @@ export type ZipRace = {
   a: number;
   o: number;
   g: GeoFeature["geometry"];
+};
+
+export type HouseDistrict = {
+  d: number;
+  n: string;
+  p: string;
+  x: number;
+  y: number;
+  g: number[][][];
 };
 
 

@@ -45,6 +45,7 @@ const DEFAULT_LAYERS: Layers = {
   p26: false,
   race: false,
   crime: false,
+  house: false,
 };
 
 const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, reg: false };
@@ -53,6 +54,21 @@ const DEFAULT_RACE: RaceLayers = { w: true, b: true, h: true, a: true, o: true }
 type FeedSize = "hidden" | "dock" | "open";
 
 const zipMem = new Map<string, ZipRace[]>();
+const zipWarm = new Set<string>();
+
+function warmZips(fips: string) {
+  if (zipMem.has(fips) || zipWarm.has(fips)) return;
+  zipWarm.add(fips);
+  void fetch(`/zips/${fips}.json`)
+    .then((r) => (r.ok ? r.json() : []))
+    .then((d: ZipRace[]) => {
+      zipMem.set(fips, Array.isArray(d) ? d : []);
+    })
+    .catch(() => undefined)
+    .then(() => {
+      zipWarm.delete(fips);
+    });
+}
 
 const FALLBACK_WX: WxNow = { temp: 87, code: 2, label: "MEM · BNA · TYS", live: false };
 
@@ -363,14 +379,7 @@ export function GridApp() {
   }
 
   function pickZip(z: ZipRace) {
-    const c = centroid({
-      type: "Feature",
-      properties: { name: z.z, fips: "", area: 0 },
-      geometry: z.g,
-    });
     setPickedZip(z.z);
-    setZipFocus({ lon: c.lon, lat: c.lat });
-    setFocusTick((n) => n + 1);
   }
 
   function handleElectYear(y: ElectYear) {
@@ -541,6 +550,7 @@ export function GridApp() {
           raceLayers={raceLayers}
           pickedZip={pickedZip}
           onPickZip={pickZip}
+          onWarmZips={layers.race ? warmZips : undefined}
           focusZip={zipFocus}
           feedHidden={feedSize === "hidden"}
         />

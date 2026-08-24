@@ -51,21 +51,25 @@ function fromRaw(row: Raw, at: number): Flight | null {
   };
 }
 
-async function pull(url: string, key: "ac" | "aircraft") {
+function rowsOf(json: Raw) {
+  if (Array.isArray(json.ac)) return json.ac as Raw[];
+  if (Array.isArray(json.aircraft)) return json.aircraft as Raw[];
+  return [] as Raw[];
+}
+
+async function pull(url: string) {
   const res = await fetch(url, {
     headers: { accept: "application/json", "user-agent": UA },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(12_000),
   });
   if (!res.ok) throw new Error(String(res.status));
   const json = (await res.json()) as Raw;
-  const rows = json[key];
-  if (!Array.isArray(rows)) return [] as Flight[];
   const at = Date.now();
   const out: Flight[] = [];
   const seen = new Set<string>();
-  for (const row of rows) {
+  for (const row of rowsOf(json)) {
     if (!row || typeof row !== "object") continue;
-    const f = fromRaw(row as Raw, at);
+    const f = fromRaw(row, at);
     if (!f || seen.has(f.id)) continue;
     seen.add(f.id);
     out.push(f);
@@ -75,13 +79,14 @@ async function pull(url: string, key: "ac" | "aircraft") {
 
 async function loadFlights() {
   if (cache && Date.now() - cache.at < TTL) return cache.flights;
-  const urls: { href: string; key: "ac" | "aircraft" }[] = [
-    { href: "https://api.adsb.lol/v2/lat/35.85/lon/-86.0/dist/280", key: "ac" },
-    { href: "https://opendata.adsb.fi/api/v2/lat/35.85/lon/-86.0/dist/280", key: "aircraft" },
+  const urls = [
+    "https://opendata.adsb.fi/api/v2/lat/35.85/lon/-86.0/dist/240",
+    "https://opendata.adsb.fi/api/v2/lat/35.85/lon/-86.0/dist/180",
+    "https://api.adsb.lol/v2/lat/35.85/lon/-86.0/dist/240",
   ];
-  for (const u of urls) {
+  for (const href of urls) {
     try {
-      const flights = await pull(u.href, u.key);
+      const flights = await pull(href);
       if (flights.length) {
         cache = { at: Date.now(), flights };
         return flights;

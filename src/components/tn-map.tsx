@@ -15,6 +15,7 @@ import type {
   CrimePerson,
   Flight,
   GeoFeature,
+  HouseDistrict,
   Layers,
   Precinct,
   Race,
@@ -43,6 +44,7 @@ import {
   makeUnproject,
   pathFromGeom,
   pathFromPts,
+  pointInGeom,
   shortPinLabel,
   viewAround,
   type BBox,
@@ -62,7 +64,8 @@ const overlayMem: {
   alpr: AlprPoint[] | null;
   cams: TrafficCam[] | null;
   sor: SorPoint[] | null;
-} = { alpr: null, cams: null, sor: null };
+  house: HouseDistrict[] | null;
+} = { alpr: null, cams: null, sor: null, house: null };
 
 const TIP_W = 224;
 const TIP_GAP = 28;
@@ -79,6 +82,63 @@ type CrimePt = CrimeIncident & XY;
 type AlprPt = AlprPoint & XY;
 type CamPt = TrafficCam & XY;
 type SorPt = SorPoint & XY;
+type HousePt = {
+  d: number;
+  n: string;
+  p: string;
+  x: number;
+  y: number;
+  ring: XY[];
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+function pip(x: number, y: number, ring: XY[]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    const dy = b.y - a.y;
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (dy || 1e-9) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+type ZipPt = {
+  z: ZipRace;
+  rings: XY[][];
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+function geomRings(geom: GeoFeature["geometry"], project: (lon: number, lat: number) => XY): XY[][] {
+  const rings: XY[][] = [];
+  if (geom.type === "Polygon") {
+    for (const ring of geom.coordinates as number[][][]) {
+      if (ring.length > 2) rings.push(ring.map(([lon, lat]) => project(lon, lat)));
+    }
+  } else {
+    for (const poly of geom.coordinates as number[][][][]) {
+      for (const ring of poly) {
+        if (ring.length > 2) rings.push(ring.map(([lon, lat]) => project(lon, lat)));
+      }
+    }
+  }
+  return rings;
+}
+
+function pipZip(x: number, y: number, rings: XY[][]) {
+  if (!rings[0] || !pip(x, y, rings[0])) return false;
+  for (let i = 1; i < rings.length; i++) {
+    if (pip(x, y, rings[i])) return false;
+  }
+  return true;
+}
+
 type Hit = {
   title: string;
   lines: string[];
@@ -292,7 +352,7 @@ function countyFit(feat: GeoFeature, project: (lon: number, lat: number) => { x:
   const b = featureBounds(feat, project);
   const i = Math.max(b.maxX - b.minX, 8);
   const a = Math.max(b.maxY - b.minY, 8);
-  const pad = Math.max(i, a) * 0.16;
+  const pad = Math.max(i, a) * 0.07;
   return { x: b.minX - pad, y: b.minY - pad, w: i + pad * 2, h: a + pad * 2 };
 }
 
@@ -359,6 +419,7 @@ export function TnMap({
   raceLayers,
   pickedZip = null,
   onPickZip,
+  onWarmZips,
   focusZip = null,
   feedHidden = false,
 }: {
@@ -382,6 +443,7 @@ export function TnMap({
   raceLayers?: RaceLayers;
   pickedZip?: string | null;
   onPickZip?: (z: ZipRace) => void;
+  onWarmZips?: (fips: string) => void;
   focusZip?: { lon: number; lat: number } | null;
   feedHidden?: boolean;
 }) {
@@ -394,6 +456,8 @@ export function TnMap({
   const [hoverZip, setHoverZip] = useState<{ a: string; b: string } | null>(null);
   const [hoverCrime, setHoverCrime] = useState<{ a: string; b: string } | null>(null);
   const [hoverFlight, setHoverFlight] = useState<{ a: string; b: string } | null>(null);
+  const [hoverHouse, setHoverHouse] = useState<{ a: string; b: string } | null>(null);
+  const [house, setHouse] = useState<HouseDistrict[]>([]);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [picked, setPicked] = useState<{
     crime: CrimeIncident;
@@ -452,6 +516,25 @@ export function TnMap({
   }, [layers.flock]);
 
   useEffect(() => {
+    if (!layers.house) return;
+    if (overlayMem.house) {
+      setHouse(overlayMem.house);
+      return;
+    }
+    let live = true;
+    fetch("/house-tn.json")
+      .then((r) => r.json())
+      .then((d: HouseDistrict[]) => {
+        overlayMem.house = Array.isArray(d) ? d : [];
+        if (live) setHouse(overlayMem.house);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [layers.house]);
+
+  useEffect(() => {
     if (!layers.cameras) return;
     if (overlayMem.cams) {
       setCams(overlayMem.cams);
@@ -473,12 +556,13 @@ export function TnMap({
   useEffect(() => {
     if (!layers.flights) {
       setHoverFlight(null);
+      setFlights([]);
       return;
     }
     let live = true;
     const pull = () => {
       fetch("/api/flights")
-        .then((r) => r.json())
+        .then((r) => (r.ok ? r.json() : { flights: [] }))
         .then((d: { flights?: Flight[] }) => {
           if (!live) return;
           const next = Array.isArray(d.flights) ? d.flights : [];
@@ -557,13 +641,39 @@ export function TnMap({
     }));
   }, [geo, project]);
 
-  const zipPaths = useMemo(() => {
-    if (!showZips || !project || !zips.length) return [];
-    return zips.map((z) => ({
-      zip: z,
-      d: pathFromGeom(z.g, project),
-    }));
+  const zipPts = useMemo(() => {
+    if (!showZips || !project || !zips.length) return [] as ZipPt[];
+    return zips.map((z) => {
+      const rings = geomRings(z.g, project);
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      for (const ring of rings) {
+        for (const p of ring) {
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+      }
+      return { z, rings, minX, minY, maxX, maxY };
+    });
   }, [showZips, project, zips]);
+  const zipPtsRef = useRef(zipPts);
+  zipPtsRef.current = zipPts;
+  const countyClipRef = useRef("");
+  const countyGeomRef = useRef<GeoFeature["geometry"] | null>(null);
+  countyClipRef.current = selected ? (paths.find((p) => p.fips === selected.fips)?.d ?? "") : "";
+  countyGeomRef.current = selected ? (paths.find((p) => p.fips === selected.fips)?.feature.geometry ?? null) : null;
+
+  useEffect(() => {
+    if (!pickedZip || !showZips) return;
+    const row = zipPts.find((r) => r.z.z === pickedZip);
+    if (!row) return;
+    const layersOn = raceLayers ?? { w: false, b: false, h: false, a: false, o: false };
+    setHoverZip(zipHud(row.z, layersOn));
+  }, [pickedZip, showZips, zipPts, raceLayers]);
 
   function showTip(e: React.MouseEvent, title: string, lines: string[]) {
     const box = root.current?.getBoundingClientRect();
@@ -581,7 +691,7 @@ export function TnMap({
   const crimePts = useMemo(() => {
     if (!project || !showCrime) return [] as CrimePt[];
     if (!crimeLayers.hom && !crimeLayers.sht) return [] as CrimePt[];
-    let rows = selected ? crime.filter((c) => c.county === selected.name) : crime;
+    let rows = crime;
     rows = rows.filter((c) => {
       if (!(c.date ?? "").startsWith("2026")) return false;
       if (c.source === "News") {
@@ -592,12 +702,11 @@ export function TnMap({
       return k ? crimeLayers[k] : false;
     });
     if (pin) rows = rows.filter((c) => nearPin(c.lat, c.lon, pin));
-    if (!selected && !pin && crimeLayers.sht) rows = thinShootings(rows);
     return rows.map((c) => {
       const p = project(c.lon, c.lat);
       return { ...c, x: p.x, y: p.y };
     });
-  }, [project, crime, selected, showCrime, crimeLayers, pin]);
+  }, [project, crime, showCrime, crimeLayers, pin]);
   const crimePtsRef = useRef(crimePts);
   crimePtsRef.current = crimePts;
 
@@ -609,6 +718,27 @@ export function TnMap({
     const box = ringBBox(feat.feature.geometry);
     return roadsInView(box);
   }, [project, selected, paths]);
+
+  const housePts = useMemo(() => {
+    if (!project || !layers.house || !house.length) return [] as HousePt[];
+    return house.map((h) => {
+      const ring = (h.g[0] ?? []).map(([lon, lat]) => project(lon, lat));
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      for (const p of ring) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      const c = project(h.x, h.y);
+      return { d: h.d, n: h.n, p: h.p, x: c.x, y: c.y, ring, minX, minY, maxX, maxY };
+    });
+  }, [project, layers.house, house]);
+  const housePtsRef = useRef(housePts);
+  housePtsRef.current = housePts;
 
   const sitePts = useMemo(() => {
     if (!project) return [];
@@ -671,6 +801,14 @@ export function TnMap({
   sitesOnRef.current = layers.sites;
   const flightsOnRef = useRef(layers.flights);
   flightsOnRef.current = layers.flights;
+  const houseOnRef = useRef(layers.house);
+  houseOnRef.current = layers.house;
+  const showZipsRef = useRef(showZips);
+  showZipsRef.current = showZips;
+  const raceLayersRef = useRef(raceLayers);
+  raceLayersRef.current = raceLayers;
+  const pickedZipRef = useRef(pickedZip);
+  pickedZipRef.current = pickedZip;
   const flightsRef = useRef(flights);
   flightsRef.current = flights;
   const selectedRef = useRef(selected);
@@ -683,7 +821,7 @@ export function TnMap({
     if (!host || !proj || !unproj) return;
     const size = sizeRef.current;
     const { s, ox, oy } = viewScale(size, next);
-    const tiles = tilesForView(next, proj, unproj, size, ox, oy, s);
+    const tiles = tilesForView(next, proj, unproj, size, ox, oy, s, !!selectedRef.current);
     const on = tiles.length > 0;
     host.style.display = on ? "block" : "none";
     setStreets((prev) => (prev === on ? prev : on));
@@ -714,6 +852,20 @@ export function TnMap({
       if (keep.has(key)) continue;
       img.remove();
       tileImgs.current.delete(key);
+    }
+  }
+
+  function prefetchTiles(next: ViewBox) {
+    const proj = projectRef.current;
+    const unproj = unprojectRef.current;
+    if (!proj || !unproj) return;
+    const size = sizeRef.current;
+    const { s, ox, oy } = viewScale(size, next);
+    const tiles = tilesForView(next, proj, unproj, size, ox, oy, s, true);
+    for (const t of tiles) {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = t.url;
     }
   }
 
@@ -792,20 +944,27 @@ export function TnMap({
     const sorOn = showSorRef.current;
     const flightsOn = flightsOnRef.current;
     const planes = flightsRef.current;
+    const houseOn = houseOnRef.current;
+    const districts = housePtsRef.current;
+    const zipOn = showZipsRef.current;
+    const zipRows = zipPtsRef.current;
     if (
       (!crimeOn || !pts.length) &&
       (!flockOn || !cameras.length) &&
       (!camsOn || !tdots.length) &&
       (!sorOn || !sors.length) &&
       (!sitesOn || !sites.length) &&
-      !flightsOn
+      !flightsOn &&
+      !(houseOn && districts.length) &&
+      !(zipOn && zipRows.length)
     )
       return;
     const cur = viewRef.current;
     const { s, ox, oy } = viewScale(size, cur);
     const zoomedNow = !!selectedRef.current;
     const pad = 10;
-    const cell = zoomedNow ? (s > 6 ? 4 : s > 2.4 ? 6 : 8) : 9;
+    const tight = cur.w < 90;
+    const cell = tight ? (s > 6 ? 4 : s > 2.4 ? 6 : 8) : 9;
     const cols = Math.max(1, Math.ceil(w / cell));
     const seen = new Uint8Array(cols * Math.max(1, Math.ceil(h / cell)));
     const record = !busy.current;
@@ -817,6 +976,40 @@ export function TnMap({
       seen[gi] = 1;
       return true;
     };
+
+    if (zipOn && zipRows.length) {
+      const layersOn = raceLayersRef.current ?? { w: false, b: false, h: false, a: false, o: false };
+      const fitW = fitRef.current.w || cur.w;
+      const ratio = fitW / Math.max(1, cur.w);
+      const fade =
+        ratio <= 1.04 ? 0.8 : ratio < 1.7 ? 0.8 - ((ratio - 1.04) / 0.66) * 0.42 : Math.max(0.15, 0.38 - (ratio - 1.7) * 0.06);
+      ctx.save();
+      ctx.translate(ox, oy);
+      ctx.scale(s, s);
+      ctx.translate(-cur.x, -cur.y);
+      const clipD = countyClipRef.current;
+      if (clipD) ctx.clip(new Path2D(clipD));
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 0.55 / Math.max(0.4, s);
+      for (const row of zipRows) {
+        if (row.maxX < cur.x - 2 || row.minX > cur.x + cur.w + 2 || row.maxY < cur.y - 2 || row.minY > cur.y + cur.h + 2)
+          continue;
+        const tone = zipTone(row.z, layersOn);
+        ctx.fillStyle = tone.fill;
+        ctx.strokeStyle = tone.tone === "white" ? "#f4f4f2" : tone.tone === "black" ? "#4a4c50" : "#84888e";
+        ctx.globalAlpha = tone.opacity * fade;
+        ctx.beginPath();
+        for (const ring of row.rings) {
+          ctx.moveTo(ring[0].x, ring[0].y);
+          for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i].x, ring[i].y);
+          ctx.closePath();
+        }
+        ctx.fill("evenodd");
+        ctx.globalAlpha = fade * 0.4;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     if (flockOn && cameras.length) {
       const r = zoomedNow ? 2.8 : 2.5;
@@ -928,21 +1121,21 @@ export function TnMap({
           ctx.moveTo(sx + r, sy);
           ctx.arc(sx, sy, r, 0, Math.PI * 2);
           if (record) {
-            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 10, crime: c });
+            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 8, crime: c });
           }
           if (++n >= cap) break;
         }
         ctx.fill();
       };
 
-      if (kinds.sht) drawBatch(sht, "#ffb347", zoomedNow ? 4.2 : 2.6, 0.72, CRIME_CAP, true);
+      if (kinds.sht) drawBatch(sht, "#ffb347", s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35, 0.8, CRIME_CAP, !tight);
 
       if (kinds.hom && hom.length) {
-        const r = zoomedNow ? 8 : 5.4;
+        const r = s > 4 ? 3.15 : s > 1.4 ? 2.55 : 2.05;
         ctx.fillStyle = "#ff4d4d";
         ctx.strokeStyle = "#ff9a9a";
-        ctx.lineWidth = 1.1;
-        ctx.globalAlpha = 0.62;
+        ctx.lineWidth = 0.7;
+        ctx.globalAlpha = 0.78;
         ctx.beginPath();
         for (const c of hom) {
           const sx = (c.x - cur.x) * s + ox;
@@ -952,7 +1145,7 @@ export function TnMap({
           ctx.moveTo(sx + r, sy);
           ctx.arc(sx, sy, r, 0, Math.PI * 2);
           if (record) {
-            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 12, crime: c });
+            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 9, crime: c });
           }
         }
         ctx.fill();
@@ -1024,6 +1217,43 @@ export function TnMap({
       }
     }
     ctx.globalAlpha = 1;
+    if (houseOn && districts.length) {
+      ctx.save();
+      ctx.strokeStyle = "#c9a45c";
+      ctx.fillStyle = "#c9a45c";
+      ctx.lineWidth = zoomedNow ? 1.15 : 0.85;
+      ctx.lineJoin = "round";
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (const h of districts) {
+        if (h.maxX < cur.x - 2 || h.minX > cur.x + cur.w + 2 || h.maxY < cur.y - 2 || h.minY > cur.y + cur.h + 2) continue;
+        const ring = h.ring;
+        if (ring.length < 3) continue;
+        const p0 = ring[0];
+        ctx.moveTo((p0.x - cur.x) * s + ox, (p0.y - cur.y) * s + oy);
+        for (let i = 1; i < ring.length; i++) {
+          const p = ring[i];
+          ctx.lineTo((p.x - cur.x) * s + ox, (p.y - cur.y) * s + oy);
+        }
+        ctx.closePath();
+      }
+      ctx.stroke();
+      if (zoomedNow) {
+        ctx.font = "600 10px 'IBM Plex Mono', ui-monospace, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.globalAlpha = 0.92;
+        for (const hd of districts) {
+          const bw = (hd.maxX - hd.minX) * s;
+          if (bw < 26) continue;
+          const sx = (hd.x - cur.x) * s + ox;
+          const sy = (hd.y - cur.y) * s + oy;
+          if (sx < 8 || sy < 8 || sx > w - 8 || sy > h - 8) continue;
+          ctx.fillText(String(hd.d), sx, sy);
+        }
+      }
+      ctx.restore();
+    }
     if (flightsOn) drawRaf.current = requestAnimationFrame(drawDots);
   }
 
@@ -1056,7 +1286,7 @@ export function TnMap({
   useEffect(() => {
     if (drawRaf.current) cancelAnimationFrame(drawRaf.current);
     drawRaf.current = requestAnimationFrame(drawDots);
-  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, crimeLayers, flights]);
+  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, layers.house, crimeLayers, flights, housePts, zipPts, showZips, raceLayers, pickedZip]);
 
   useEffect(() => {
     const el = root.current;
@@ -1079,7 +1309,7 @@ export function TnMap({
     const start = performance.now();
     busy.current = true;
     const step = (now: number) => {
-      const t = easeOutCubic(Math.min(1, (now - start) / 220));
+      const t = easeOutCubic(Math.min(1, (now - start) / 110));
       paintView({
         x: from.x + (next.x - from.x) * t,
         y: from.y + (next.y - from.y) * t,
@@ -1096,24 +1326,31 @@ export function TnMap({
     raf.current = requestAnimationFrame(step);
   }
 
+  const prevSel = useRef<typeof selected>(null);
+
   useEffect(() => {
     if (!project || !geo) return;
     if (!selected) {
       fitRef.current = FULL_VIEW;
-      animateTo(FULL_VIEW);
+      if (prevSel.current) animateTo(FULL_VIEW);
+      prevSel.current = selected;
       placePin(FULL_VIEW);
       return;
     }
     const feat = geo.find((f) => f.properties.fips === selected.fips);
+    prevSel.current = selected;
     if (!feat) return;
     const fit = countyFit(feat, project);
     fitRef.current = fit;
+    prefetchTiles(fit);
     const mark = pin;
     if (mark) {
       const target = clampView(viewAround(mark.lon, mark.lat, project), fit);
+      prefetchTiles(target);
       animateTo(target);
     } else if (focusZip) {
       const target = clampView(viewAround(focusZip.lon, focusZip.lat, project, 0.04), fit);
+      prefetchTiles(target);
       animateTo(target);
     } else {
       animateTo(fit);
@@ -1122,13 +1359,13 @@ export function TnMap({
   }, [selected, pin, project, geo, focusTick, focusZip]);
 
   function applyView(next: ViewBox, animate = true) {
-    const clamped = selected ? clampView(next, fitRef.current) : next;
+    const fit = selectedRef.current ? fitRef.current : FULL_VIEW;
+    const clamped = clampView(next, fit);
     if (animate) animateTo(clamped);
     else paintView(clamped);
   }
 
   function zoomBy(factor: number, cx?: number, cy?: number, animate = false) {
-    if (!selected) return;
     const cur = viewRef.current;
     const px = cx ?? cur.x + cur.w / 2;
     const py = cy ?? cur.y + cur.h / 2;
@@ -1146,7 +1383,6 @@ export function TnMap({
   }
 
   function panBy(nx: number, ny: number) {
-    if (!selected) return;
     const cur = viewRef.current;
     applyView(
       {
@@ -1172,7 +1408,7 @@ export function TnMap({
 
   useEffect(() => {
     const el = root.current;
-    if (!el || !selected) return;
+    if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const pt = clientToView(e.clientX, e.clientY);
@@ -1185,10 +1421,11 @@ export function TnMap({
   }, [selected]);
 
   const zoomed = !!selected;
-  const zoomRatio = zoomed ? fitRef.current.w / view.w : 1;
-  const canIn = zoomed && zoomRatio < MAX_ZOOM - 0.05;
-  const canOut = zoomed && zoomRatio > 1.05;
-  const extraZoom = zoomed && zoomRatio > 1.12;
+  const fitBox = selected ? fitRef.current : FULL_VIEW;
+  const zoomRatio = fitBox.w / view.w;
+  const canIn = zoomRatio < MAX_ZOOM - 0.05;
+  const canOut = zoomRatio > 1.05;
+  const extraZoom = zoomRatio > 1.12;
 
   const alertsByCounty = useMemo(() => {
     const m = new Map<string, Alert[]>();
@@ -1219,6 +1456,68 @@ export function TnMap({
       if (d <= h.r * h.r && (!best || d < best.d)) best = { h, d };
     }
     return best?.h ?? null;
+  }
+
+  function houseAt(clientX: number, clientY: number) {
+    if (!houseOnRef.current) return null;
+    const box = root.current?.getBoundingClientRect();
+    if (!box) return null;
+    const cur = viewRef.current;
+    const { s, ox, oy } = viewScale({ w: box.width, h: box.height }, cur);
+    const mx = (clientX - box.left - ox) / s + cur.x;
+    const my = (clientY - box.top - oy) / s + cur.y;
+    let hit: HousePt | null = null;
+    let area = Infinity;
+    for (const h of housePtsRef.current) {
+      if (mx < h.minX || mx > h.maxX || my < h.minY || my > h.maxY) continue;
+      if (!pip(mx, my, h.ring)) continue;
+      const a = (h.maxX - h.minX) * (h.maxY - h.minY);
+      if (a < area) {
+        area = a;
+        hit = h;
+      }
+    }
+    return hit;
+  }
+
+  function mapXY(clientX: number, clientY: number) {
+    const box = root.current?.getBoundingClientRect();
+    if (!box) return null;
+    const cur = viewRef.current;
+    const { s, ox, oy } = viewScale({ w: box.width, h: box.height }, cur);
+    return { x: (clientX - box.left - ox) / s + cur.x, y: (clientY - box.top - oy) / s + cur.y };
+  }
+
+  function zipAt(clientX: number, clientY: number) {
+    if (!showZipsRef.current) return null;
+    const pt = mapXY(clientX, clientY);
+    if (!pt) return null;
+    const geom = countyGeomRef.current;
+    const unproj = unprojectRef.current;
+    if (geom && unproj) {
+      const ll = unproj(pt.x, pt.y);
+      if (!pointInGeom(ll.lon, ll.lat, geom)) return null;
+    }
+    let hit: ZipPt | null = null;
+    let area = Infinity;
+    for (const row of zipPtsRef.current) {
+      if (pt.x < row.minX || pt.x > row.maxX || pt.y < row.minY || pt.y > row.maxY) continue;
+      if (!pipZip(pt.x, pt.y, row.rings)) continue;
+      const a = (row.maxX - row.minX) * (row.maxY - row.minY);
+      if (a < area) {
+        area = a;
+        hit = row;
+      }
+    }
+    return hit;
+  }
+
+  function applyZipHud(next: { a: string; b: string } | null) {
+    setHoverZip((prev) => {
+      if (!prev && !next) return prev;
+      if (prev && next && prev.a === next.a && prev.b === next.b) return prev;
+      return next;
+    });
   }
 
   function pickDotAt(clientX: number, clientY: number) {
@@ -1255,6 +1554,15 @@ export function TnMap({
       return true;
     }
     if (!h?.crime) {
+      const zipHit = zipAt(clientX, clientY);
+      if (zipHit) {
+        stealClick.current = true;
+        skipSelect.current = true;
+        setTip(null);
+        const layersOn = raceLayersRef.current ?? { w: false, b: false, h: false, a: false, o: false };
+        applyZipHud(zipHud(zipHit.z, layersOn));
+        return true;
+      }
       setPickedCam(null);
       setPickedSor(null);
       if (selected) setPicked(null);
@@ -1290,7 +1598,9 @@ export function TnMap({
         if (interactiveTarget(e.target)) return;
         if (e.button !== 0) return;
         if (hitAt(e.clientX, e.clientY, true)) return;
-        if (!selected) return;
+        const fit = selected ? fitRef.current : FULL_VIEW;
+        const zoomedIn = fit.w / viewRef.current.w > 1.04;
+        if (!selected && !zoomedIn) return;
         pan.current = { x: e.clientX, y: e.clientY, vx: viewRef.current.x, vy: viewRef.current.y, moved: false };
         e.currentTarget.setPointerCapture(e.pointerId);
       }}
@@ -1337,23 +1647,48 @@ export function TnMap({
         if (interactiveTarget(e.target)) {
           setHoverCrime(null);
           setHoverFlight(null);
+          setHoverHouse(null);
+          applyZipHud(null);
           return;
         }
         const h = hitAt(e.clientX, e.clientY);
         if (h?.flight) {
           setTip(null);
           setHoverCrime(null);
+          setHoverHouse(null);
+          applyZipHud(null);
           setHoverFlight(flightHud(h.flight));
           return;
         }
         if (h?.crime) {
           setTip(null);
           setHoverFlight(null);
+          setHoverHouse(null);
+          applyZipHud(null);
           setHoverCrime(crimeHud(h.crime));
           return;
         }
         setHoverCrime(null);
         setHoverFlight(null);
+        const zipHit = zipAt(e.clientX, e.clientY);
+        if (zipHit) {
+          setTip(null);
+          setHoverHouse(null);
+          const layersOn = raceLayersRef.current ?? { w: false, b: false, h: false, a: false, o: false };
+          applyZipHud(zipHud(zipHit.z, layersOn));
+          return;
+        }
+        applyZipHud(null);
+        const hd = houseAt(e.clientX, e.clientY);
+        if (hd) {
+          setTip(null);
+          setHoverHouse({
+            a: `House ${hd.d}`,
+            b: hd.n ? `${hd.n} · ${hd.p === "D" ? "D" : "R"}` : "TN House",
+          });
+          return;
+        }
+        setHoverHouse(null);
         if (h) showTip(e, h.title, h.lines);
       }}
       onMouseLeave={() => {
@@ -1361,6 +1696,8 @@ export function TnMap({
           setTip(null);
           setHoverCrime(null);
           setHoverFlight(null);
+          setHoverHouse(null);
+          applyZipHud(null);
         }
       }}
     >
@@ -1372,7 +1709,7 @@ export function TnMap({
           <svg
             ref={svgRef}
             viewBox={`${viewRef.current.x} ${viewRef.current.y} ${viewRef.current.w} ${viewRef.current.h}`}
-            className={cn("absolute inset-0 z-[1] h-full w-full", selected ? "cursor-grab" : undefined)}
+            className={cn("absolute inset-0 z-[1] h-full w-full", selected || extraZoom ? "cursor-grab" : undefined)}
             role="img"
             aria-label="Tennessee grid map"
             preserveAspectRatio="xMidYMid meet"
@@ -1435,6 +1772,7 @@ export function TnMap({
                     if (!county) return;
                     if (!zoomed) {
                       prefetchNews(county.name, county.seat, county.market);
+                      onWarmZips?.(county.fips);
                       const sky = wxHint(county.name);
                       showTip(e, county.name, [
                         `${county.pop.toLocaleString()} people · ${county.seat}`,
@@ -1470,52 +1808,6 @@ export function TnMap({
                 </g>
               </g>
             )}
-            {zoomed && showZips ? (
-              <g mask="url(#zip-mask)">
-                {zipPaths.map(({ zip: z, d }) => {
-                  const picked = pickedZip === z.z;
-                  const dim = Boolean(pickedZip && !picked);
-                  const layersOn = raceLayers ?? { w: false, b: false, h: false, a: false, o: false };
-                  const tone = zipTone(z, layersOn);
-                  const fill = tone.fill;
-                  const hud = zipHud(z, layersOn);
-                  const stroke =
-                    picked
-                      ? "var(--color-fg)"
-                      : tone.tone === "white"
-                        ? "var(--color-race-white)"
-                        : tone.tone === "black"
-                          ? "#4a4c50"
-                          : "var(--color-race-gray)";
-                  return (
-                    <path
-                      key={z.z}
-                      d={d}
-                      data-zip={z.z}
-                      data-tone={tone.tone}
-                      fill={fill}
-                      fillOpacity={dim ? 0.28 : picked ? 0.9 : tone.opacity}
-                      fillRule="evenodd"
-                      stroke={stroke}
-                      strokeWidth={picked ? 0.45 : 0.22}
-                      strokeOpacity={tone.tone === "none" ? 0.35 : 0.75}
-                      className="cursor-pointer"
-                      onMouseEnter={() => setHoverZip(hud)}
-                      onMouseMove={() => setHoverZip(hud)}
-                      onMouseLeave={() => setHoverZip(null)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (stealClick.current) {
-                          stealClick.current = false;
-                          return;
-                        }
-                        onPickZip?.(z);
-                      }}
-                    />
-                  );
-                })}
-              </g>
-            ) : null}
             {zoomed && layers.p24 && !showZips
               ? precincts.map((pr) => {
                   const tot = pr.t || 1;
@@ -1653,7 +1945,6 @@ export function TnMap({
           ) : null}
         </>
       )}
-      {zoomed ? (
         <div className="absolute bottom-2 left-2 z-10 flex flex-col border border-line bg-elevated/95">
           <button
             type="button"
@@ -1674,8 +1965,7 @@ export function TnMap({
             <Minus className="size-3.5" />
           </button>
         </div>
-      ) : null}
-      {zoomed && extraZoom ? (
+      {extraZoom ? (
         <div className="absolute right-2 bottom-2 z-10 grid grid-cols-3 border border-line bg-elevated/95">
           <span />
           <button
@@ -1716,6 +2006,12 @@ export function TnMap({
           <span />
         </div>
       ) : null}
+      {hoverHouse && !hoverZip && !(zoomed && showZips) ? (
+        <div className="pointer-events-none absolute top-1 left-1/2 z-10 w-[min(92%,18rem)] -translate-x-1/2 text-center font-mono text-[10px] leading-tight tracking-wide text-hot uppercase">
+          <div>{hoverHouse.a}</div>
+          <div>{hoverHouse.b}</div>
+        </div>
+      ) : null}
       {zoomed && layers.p26 && !showZips ? (
         <div className="pointer-events-none absolute top-2 left-1/2 z-10 w-[min(92%,22rem)] -translate-x-1/2 text-center font-mono text-xs tracking-wide text-muted">
           2026 precinct GIS is not published. Nov 3 general has not been run. Aug 6 was local races
@@ -1724,7 +2020,12 @@ export function TnMap({
       ) : null}
       {zoomed && showZips ? (
         <div className="pointer-events-none absolute top-1 left-1/2 z-10 w-[min(92%,18rem)] -translate-x-1/2 text-center">
-          {hoverZip ? (
+          {hoverHouse ? (
+            <div className="mb-1 font-mono text-[10px] leading-tight tracking-wide text-hot uppercase">
+              <div>{hoverHouse.a}</div>
+              <div>{hoverHouse.b}</div>
+            </div>
+          ) : hoverZip ? (
             <div className="mb-1 font-mono text-[10px] leading-tight tracking-wide text-hot uppercase">
               <div>{hoverZip.a}</div>
               <div>{hoverZip.b}</div>
