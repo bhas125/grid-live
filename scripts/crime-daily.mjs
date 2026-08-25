@@ -322,13 +322,14 @@ async function main() {
   let recoded = 0;
   for (const r of existing) {
     if (r.source !== "News") continue;
-    const kind = newsKind(r.address ?? "");
+    const kind = newsKind(`${r.offense ?? ""} ${r.address ?? ""}`);
     if (staleNews(r.address ?? "")) {
       r.date = "2025-12-31";
       recoded += 1;
       continue;
     }
-    if (r.type === "Homicide" && kind.type === "Shooting") {
+    const headline = /killed|homicide|murder|fatal|shot and|dies|died/i.test(r.address ?? "");
+    if (r.type === "Homicide" && kind.type === "Shooting" && headline) {
       r.type = "Shooting";
       r.killed = 0;
       r.offense = kind.offense;

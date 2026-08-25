@@ -303,7 +303,9 @@ function CrimeFeed({
       </div>
       <p className="px-4 pb-2 font-mono text-xs leading-relaxed tracking-wide text-muted">
         {crimeLayers.h48 ? (
-          <span className="text-fresh">Last 48 hours{county ? ` · ${county.name}` : ""} · purple on the map.</span>
+          <span className="text-fresh">
+            List: last 48 hours{county ? ` · ${county.name}` : ""}. Map still shows all Hom/Sht; recent stay purple.
+          </span>
         ) : county ? (
           (intel?.crimeNote ?? `${county.name} · 2026 homicide / shooting points.`)
         ) : (

@@ -691,10 +691,7 @@ export function TnMap({
 
   const crimePts = useMemo(() => {
     if (!project || !showCrime) return [] as CrimePt[];
-    const only48 = crimeLayers.h48;
-    const homOn = crimeLayers.hom || (only48 && !crimeLayers.hom && !crimeLayers.sht);
-    const shtOn = crimeLayers.sht || (only48 && !crimeLayers.hom && !crimeLayers.sht);
-    if (!homOn && !shtOn) return [] as CrimePt[];
+    if (!crimeLayers.hom && !crimeLayers.sht) return [] as CrimePt[];
     let rows = crime;
     rows = rows.filter((c) => {
       if (!(c.date ?? "").startsWith("2026")) return false;
@@ -702,10 +699,9 @@ export function TnMap({
         const t = `${c.address ?? ""} ${c.offense ?? ""}`;
         if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
       }
-      if (only48 && !isFresh48(c.date)) return false;
       const k = kindOf(c.type);
-      if (k === "hom") return homOn;
-      if (k === "sht") return shtOn;
+      if (k === "hom") return crimeLayers.hom;
+      if (k === "sht") return crimeLayers.sht;
       return false;
     });
     if (pin) rows = rows.filter((c) => nearPin(c.lat, c.lon, pin));
@@ -1120,12 +1116,11 @@ export function TnMap({
         else if (k === "sht") sht.push(c);
       }
 
-      const drawBatch = (rows: CrimePt[], color: string, r: number, a: number, cap: number, skip: boolean) => {
+      const drawBatch = (rows: CrimePt[], color: string, r: number, a: number, skip: boolean) => {
         if (!rows.length) return;
         ctx.fillStyle = color;
         ctx.globalAlpha = a;
         ctx.beginPath();
-        let n = 0;
         for (const c of rows) {
           const sx = (c.x - cur.x) * s + ox;
           const sy = (c.y - cur.y) * s + oy;
@@ -1136,14 +1131,13 @@ export function TnMap({
           if (record) {
             hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 8, crime: c });
           }
-          if (++n >= cap) break;
         }
         ctx.fill();
       };
 
-      if (kinds.sht || kinds.h48) drawBatch(sht, "#ffb347", s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35, 0.8, CRIME_CAP, !tight);
+      if (kinds.sht) drawBatch(sht, "#ffb347", s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35, 0.8, !tight);
 
-      if ((kinds.hom || kinds.h48) && hom.length) {
+      if (kinds.hom && hom.length) {
         const r = s > 4 ? 3.15 : s > 1.4 ? 2.55 : 2.05;
         ctx.fillStyle = "#ff4d4d";
         ctx.strokeStyle = "#ff9a9a";
