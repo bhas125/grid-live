@@ -134,12 +134,13 @@ export type LayerId =
 
 export type Layers = Record<LayerId, boolean>;
 
-export type CrimeKind = "hom" | "sht" | "reg";
+export type CrimeKind = "hom" | "sht" | "h48" | "reg";
 export type CrimeLayers = Record<CrimeKind, boolean>;
 
 export const CRIME_META: { id: CrimeKind; label: string; chip: string }[] = [
   { id: "hom", label: "Hom", chip: "border-hot bg-hot/15 text-hot" },
   { id: "sht", label: "Sht", chip: "border-watch bg-watch/15 text-watch" },
+  { id: "h48", label: "48 Hours", chip: "border-fresh bg-fresh/15 text-fresh" },
   { id: "reg", label: "Registry", chip: "border-steel bg-steel/15 text-steel" },
 ];
 

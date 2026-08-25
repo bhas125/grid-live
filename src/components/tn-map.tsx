@@ -4,6 +4,7 @@ import countiesJson from "@/data/counties.json";
 import roadsJson from "@/data/roads.json";
 import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
+import { isFresh48 } from "@/lib/crime-fresh";
 import type {
   Alert,
   AlprPoint,
@@ -690,7 +691,10 @@ export function TnMap({
 
   const crimePts = useMemo(() => {
     if (!project || !showCrime) return [] as CrimePt[];
-    if (!crimeLayers.hom && !crimeLayers.sht) return [] as CrimePt[];
+    const only48 = crimeLayers.h48;
+    const homOn = crimeLayers.hom || (only48 && !crimeLayers.hom && !crimeLayers.sht);
+    const shtOn = crimeLayers.sht || (only48 && !crimeLayers.hom && !crimeLayers.sht);
+    if (!homOn && !shtOn) return [] as CrimePt[];
     let rows = crime;
     rows = rows.filter((c) => {
       if (!(c.date ?? "").startsWith("2026")) return false;
@@ -698,8 +702,11 @@ export function TnMap({
         const t = `${c.address ?? ""} ${c.offense ?? ""}`;
         if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
       }
+      if (only48 && !isFresh48(c.date)) return false;
       const k = kindOf(c.type);
-      return k ? crimeLayers[k] : false;
+      if (k === "hom") return homOn;
+      if (k === "sht") return shtOn;
+      return false;
     });
     if (pin) rows = rows.filter((c) => nearPin(c.lat, c.lon, pin));
     return rows.map((c) => {
@@ -1099,9 +1106,15 @@ export function TnMap({
 
     if (crimeOn && pts.length) {
       const kinds = crimeKindRef.current;
+      const now = Date.now();
       const sht: CrimePt[] = [];
       const hom: CrimePt[] = [];
+      const fresh: CrimePt[] = [];
       for (const c of pts) {
+        if (isFresh48(c.date, now)) {
+          fresh.push(c);
+          continue;
+        }
         const k = kindOf(c.type);
         if (k === "hom") hom.push(c);
         else if (k === "sht") sht.push(c);
@@ -1128,9 +1141,9 @@ export function TnMap({
         ctx.fill();
       };
 
-      if (kinds.sht) drawBatch(sht, "#ffb347", s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35, 0.8, CRIME_CAP, !tight);
+      if (kinds.sht || kinds.h48) drawBatch(sht, "#ffb347", s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35, 0.8, CRIME_CAP, !tight);
 
-      if (kinds.hom && hom.length) {
+      if ((kinds.hom || kinds.h48) && hom.length) {
         const r = s > 4 ? 3.15 : s > 1.4 ? 2.55 : 2.05;
         ctx.fillStyle = "#ff4d4d";
         ctx.strokeStyle = "#ff9a9a";
@@ -1150,6 +1163,29 @@ export function TnMap({
         }
         ctx.fill();
         ctx.globalAlpha = 0.9;
+        ctx.stroke();
+      }
+
+      if (fresh.length) {
+        const r = s > 4 ? 3.35 : s > 1.4 ? 2.7 : 2.2;
+        ctx.fillStyle = "#c45cff";
+        ctx.strokeStyle = "#e4b8ff";
+        ctx.lineWidth = 0.85;
+        ctx.globalAlpha = 0.92;
+        ctx.beginPath();
+        for (const c of fresh) {
+          const sx = (c.x - cur.x) * s + ox;
+          const sy = (c.y - cur.y) * s + oy;
+          if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
+          stamp(sx, sy, true);
+          ctx.moveTo(sx + r, sy);
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          if (record) {
+            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 10, crime: c });
+          }
+        }
+        ctx.fill();
+        ctx.globalAlpha = 0.95;
         ctx.stroke();
       }
     }
@@ -1287,6 +1323,15 @@ export function TnMap({
     if (drawRaf.current) cancelAnimationFrame(drawRaf.current);
     drawRaf.current = requestAnimationFrame(drawDots);
   }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, layers.house, crimeLayers, flights, housePts, zipPts, showZips, raceLayers, pickedZip]);
+
+  useEffect(() => {
+    if (!showCrime) return;
+    const tick = window.setInterval(() => {
+      if (drawRaf.current) cancelAnimationFrame(drawRaf.current);
+      drawRaf.current = requestAnimationFrame(drawDots);
+    }, 60_000);
+    return () => window.clearInterval(tick);
+  }, [showCrime]);
 
   useEffect(() => {
     const el = root.current;

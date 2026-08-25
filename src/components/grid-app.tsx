@@ -48,7 +48,7 @@ const DEFAULT_LAYERS: Layers = {
   house: false,
 };
 
-const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, reg: false };
+const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, h48: false, reg: false };
 const DEFAULT_RACE: RaceLayers = { w: true, b: true, h: true, a: true, o: true };
 
 type FeedSize = "hidden" | "dock" | "open";

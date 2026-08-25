@@ -22,6 +22,7 @@ import { RACE_META } from "@/data/types";
 import { cn, fmtAge, fmtMargin, fmtNum, fmtPct } from "@/lib/utils";
 import { newsCacheAge, newsCacheKey, fetchNews, readNewsCache } from "@/lib/news-cache";
 import { zipTone } from "@/lib/race-tone";
+import { isFresh48 } from "@/lib/crime-fresh";
 import { AboutPanel } from "./about-panel";
 
 const TABS: { id: TabId; label: string }[] = [
@@ -248,18 +249,25 @@ function CrimeFeed({
 
   const scoped = useMemo(() => {
     const rows = county ? incidents.filter((i) => i.county === county.name) : incidents;
-    return rows.filter((i) => is2026(i) && !staleStory(i));
-  }, [incidents, county]);
+    return rows.filter((i) => {
+      if (!is2026(i) || staleStory(i)) return false;
+      if (crimeLayers.h48 && !isFresh48(i.date)) return false;
+      return true;
+    });
+  }, [incidents, county, crimeLayers.h48]);
+
+  const homOn = crimeLayers.hom || (crimeLayers.h48 && !crimeLayers.hom && !crimeLayers.sht);
+  const shtOn = crimeLayers.sht || (crimeLayers.h48 && !crimeLayers.hom && !crimeLayers.sht);
 
   const homList = useMemo(() => {
-    if (!crimeLayers.hom) return [] as CrimeIncident[];
+    if (!homOn) return [] as CrimeIncident[];
     return scoped.filter((i) => isHomicide(i.type)).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  }, [scoped, crimeLayers.hom]);
+  }, [scoped, homOn]);
 
   const shtList = useMemo(() => {
-    if (!crimeLayers.sht) return [] as CrimeIncident[];
+    if (!shtOn) return [] as CrimeIncident[];
     return scoped.filter((i) => isShooting(i.type)).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  }, [scoped, crimeLayers.sht]);
+  }, [scoped, shtOn]);
 
   const stats = useMemo(
     () => ({ hom: homList.length, sht: shtList.length, n: homList.length + shtList.length }),
@@ -269,7 +277,7 @@ function CrimeFeed({
   useEffect(() => {
     setShownHom(PAGE);
     setShownSht(PAGE);
-  }, [county?.name, incidents.length, crimeLayers.hom, crimeLayers.sht]);
+  }, [county?.name, incidents.length, crimeLayers.hom, crimeLayers.sht, crimeLayers.h48]);
 
   useEffect(() => {
     const el = sentinel.current;
@@ -294,20 +302,24 @@ function CrimeFeed({
         <Stat k="Sht" v={fmtNum(stats.sht)} />
       </div>
       <p className="px-4 pb-2 font-mono text-xs leading-relaxed tracking-wide text-muted">
-        {county
-          ? (intel?.crimeNote ?? `${county.name} · 2026 homicide / shooting points.`)
-          : "Latest 2026 homicides first, then shootings. MNPD, MPD, CPD, GVA, and statewide news."}
+        {crimeLayers.h48 ? (
+          <span className="text-fresh">Last 48 hours{county ? ` · ${county.name}` : ""} · purple on the map.</span>
+        ) : county ? (
+          (intel?.crimeNote ?? `${county.name} · 2026 homicide / shooting points.`)
+        ) : (
+          "Latest 2026 homicides first, then shootings. MNPD, MPD, CPD, GVA, and statewide news."
+        )}
       </p>
       {!incidents.length ? (
         <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">Loading incidents</p>
       ) : null}
-      {crimeLayers.hom && visibleHom.length ? (
+      {homOn && visibleHom.length ? (
         <>
           <div className="px-4 pt-1 font-mono text-[10px] tracking-widest text-hot uppercase">Homicides</div>
           <CrimeRows rows={visibleHom} onPickCrime={onPickCrime} />
         </>
       ) : null}
-      {crimeLayers.sht && visibleSht.length ? (
+      {shtOn && visibleSht.length ? (
         <>
           <div className="px-4 pt-2 font-mono text-[10px] tracking-widest text-watch uppercase">Shootings</div>
           <CrimeRows rows={visibleSht} onPickCrime={onPickCrime} />
@@ -344,7 +356,9 @@ function CrimeRows({
               className="w-full px-4 py-2.5 text-left hover:bg-grid/10"
             >
               <div className="flex items-center gap-2 font-mono text-xs tracking-wide uppercase">
-                <span className={isHomicide(it.type) ? "text-hot" : "text-watch"}>{it.type}</span>
+                <span className={isFresh48(it.date) ? "text-fresh" : isHomicide(it.type) ? "text-hot" : "text-watch"}>
+                  {isFresh48(it.date) ? `48h · ${it.type}` : it.type}
+                </span>
                 <span className="ml-auto text-faint">{fmtCrimeDate(it.date)}</span>
               </div>
               <div className="mt-0.5 text-sm leading-snug">{addr || where || it.type}</div>
@@ -849,13 +863,13 @@ export function FeedPanel({
         />
       </div>
       <div className={tab === "crime" ? "flex min-h-0 flex-1 flex-col overflow-y-auto" : "hidden"}>
-        {crimeLayers.hom || crimeLayers.sht ? (
+        {crimeLayers.hom || crimeLayers.sht || crimeLayers.h48 ? (
           <CrimeFeed county={county} incidents={crime} crimeLayers={crimeLayers} onPickCrime={onPickCrime} />
         ) : null}
         {crimeLayers.reg ? <SorFeed county={county} active={tab === "crime" && crimeLayers.reg} /> : null}
-        {!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.reg ? (
+        {!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.h48 && !crimeLayers.reg ? (
           <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">
-            Turn on Hom, Sht, or Registry
+            Turn on Hom, Sht, 48 Hours, or Registry
           </p>
         ) : null}
       </div>
