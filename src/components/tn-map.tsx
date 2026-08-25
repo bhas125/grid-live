@@ -691,7 +691,7 @@ export function TnMap({
 
   const crimePts = useMemo(() => {
     if (!project || !showCrime) return [] as CrimePt[];
-    if (!crimeLayers.hom && !crimeLayers.sht) return [] as CrimePt[];
+    if (!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.h48) return [] as CrimePt[];
     let rows = crime;
     rows = rows.filter((c) => {
       if (!(c.date ?? "").startsWith("2026")) return false;
@@ -699,7 +699,11 @@ export function TnMap({
         const t = `${c.address ?? ""} ${c.offense ?? ""}`;
         if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
       }
+      if (selected && c.county !== selected.name) return false;
       const k = kindOf(c.type);
+      if (!k) return false;
+      const fresh = isFresh48(c.date);
+      if (crimeLayers.h48 && fresh) return true;
       if (k === "hom") return crimeLayers.hom;
       if (k === "sht") return crimeLayers.sht;
       return false;
@@ -709,7 +713,7 @@ export function TnMap({
       const p = project(c.lon, c.lat);
       return { ...c, x: p.x, y: p.y };
     });
-  }, [project, crime, showCrime, crimeLayers, pin]);
+  }, [project, crime, showCrime, crimeLayers, pin, selected]);
   const crimePtsRef = useRef(crimePts);
   crimePtsRef.current = crimePts;
 
@@ -1107,13 +1111,23 @@ export function TnMap({
       const hom: CrimePt[] = [];
       const fresh: CrimePt[] = [];
       for (const c of pts) {
-        if (isFresh48(c.date, now)) {
+        if (kinds.h48 && isFresh48(c.date, now)) {
           fresh.push(c);
           continue;
         }
         const k = kindOf(c.type);
         if (k === "hom") hom.push(c);
         else if (k === "sht") sht.push(c);
+      }
+
+      const clipD = zoomedNow ? countyClipRef.current : "";
+      if (clipD) {
+        ctx.save();
+        ctx.translate(ox, oy);
+        ctx.scale(s, s);
+        ctx.translate(-cur.x, -cur.y);
+        ctx.clip(new Path2D(clipD));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
       const drawBatch = (rows: CrimePt[], color: string, r: number, a: number, skip: boolean) => {
@@ -1160,7 +1174,7 @@ export function TnMap({
         ctx.stroke();
       }
 
-      if (fresh.length) {
+      if (kinds.h48 && fresh.length) {
         const r = s > 4 ? 3.35 : s > 1.4 ? 2.7 : 2.2;
         ctx.fillStyle = "#c45cff";
         ctx.strokeStyle = "#e4b8ff";
@@ -1182,6 +1196,8 @@ export function TnMap({
         ctx.globalAlpha = 0.95;
         ctx.stroke();
       }
+
+      if (clipD) ctx.restore();
     }
 
     if (sitesOn && sites.length) {
