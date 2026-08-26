@@ -463,6 +463,7 @@ export function TnMap({
   const [hoverHouse, setHoverHouse] = useState<{ a: string; b: string } | null>(null);
   const [house, setHouse] = useState<HouseDistrict[]>([]);
   const [flights, setFlights] = useState<Flight[]>([]);
+  const [dispatch, setDispatch] = useState<CrimeIncident[]>([]);
   const [picked, setPicked] = useState<{
     crime: CrimeIncident;
     names: CrimeNames | null | undefined;
@@ -592,6 +593,28 @@ export function TnMap({
   }, [layers.flights]);
 
   useEffect(() => {
+    if (!layers.dispatch) {
+      setDispatch([]);
+      return;
+    }
+    let live = true;
+    const pull = () => {
+      fetch("/api/dispatch")
+        .then((r) => (r.ok ? r.json() : { incidents: [] }))
+        .then((d: { incidents?: CrimeIncident[] }) => {
+          if (live) setDispatch(Array.isArray(d.incidents) ? d.incidents : []);
+        })
+        .catch(() => undefined);
+    };
+    pull();
+    const tick = window.setInterval(pull, 60_000);
+    return () => {
+      live = false;
+      window.clearInterval(tick);
+    };
+  }, [layers.dispatch]);
+
+  useEffect(() => {
     if (!showSor) return;
     if (overlayMem.sor) {
       setSor(overlayMem.sor);
@@ -697,26 +720,22 @@ export function TnMap({
   const crimePts = useMemo(() => {
     if (!project || !showCrime) return [] as CrimePt[];
     let rows = crime;
-    if (!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.h48) {
-      rows = rows.filter((c) => isDispatch(c) && (!selected || c.county === selected.name));
-    } else {
-      rows = rows.filter((c) => {
-        if (isDispatch(c)) return !selected || c.county === selected.name;
-        if (!(c.date ?? "").startsWith("2026")) return false;
-        if (c.source === "News") {
-          const t = `${c.address ?? ""} ${c.offense ?? ""}`;
-          if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
-        }
-        if (selected && c.county !== selected.name) return false;
-        const k = kindOf(c.type);
-        if (!k) return false;
-        const fresh = isFresh48(c.date);
-        if (crimeLayers.h48 && fresh) return true;
-        if (k === "hom") return crimeLayers.hom;
-        if (k === "sht") return crimeLayers.sht;
-        return false;
-      });
-    }
+    rows = rows.filter((c) => {
+      if (isDispatch(c)) return false;
+      if (!(c.date ?? "").startsWith("2026")) return false;
+      if (c.source === "News") {
+        const t = `${c.address ?? ""} ${c.offense ?? ""}`;
+        if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
+      }
+      if (selected && c.county !== selected.name) return false;
+      const k = kindOf(c.type);
+      if (!k) return false;
+      const fresh = isFresh48(c.date);
+      if (crimeLayers.h48 && fresh) return true;
+      if (k === "hom") return crimeLayers.hom;
+      if (k === "sht") return crimeLayers.sht;
+      return false;
+    });
     if (pin) rows = rows.filter((c) => nearPin(c.lat, c.lon, pin));
     return rows.map((c) => {
       const p = project(c.lon, c.lat);
@@ -817,6 +836,8 @@ export function TnMap({
   sitesOnRef.current = layers.sites;
   const flightsOnRef = useRef(layers.flights);
   flightsOnRef.current = layers.flights;
+  const dispatchOnRef = useRef(layers.dispatch);
+  dispatchOnRef.current = layers.dispatch;
   const houseOnRef = useRef(layers.house);
   houseOnRef.current = layers.house;
   const showZipsRef = useRef(showZips);
@@ -827,6 +848,17 @@ export function TnMap({
   pickedZipRef.current = pickedZip;
   const flightsRef = useRef(flights);
   flightsRef.current = flights;
+  const dispatchPts = useMemo(() => {
+    if (!project || !layers.dispatch || !dispatch.length) return [] as CrimePt[];
+    return dispatch
+      .filter((c) => !selected || c.county === selected.name)
+      .map((c) => {
+        const p = project(c.lon, c.lat);
+        return { ...c, x: p.x, y: p.y };
+      });
+  }, [project, layers.dispatch, dispatch, selected]);
+  const dispatchPtsRef = useRef(dispatchPts);
+  dispatchPtsRef.current = dispatchPts;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
 
@@ -960,6 +992,8 @@ export function TnMap({
     const sorOn = showSorRef.current;
     const flightsOn = flightsOnRef.current;
     const planes = flightsRef.current;
+    const dispatchOn = dispatchOnRef.current;
+    const cad = dispatchPtsRef.current;
     const houseOn = houseOnRef.current;
     const districts = housePtsRef.current;
     const zipOn = showZipsRef.current;
@@ -971,6 +1005,7 @@ export function TnMap({
       (!sorOn || !sors.length) &&
       (!sitesOn || !sites.length) &&
       !flightsOn &&
+      !(dispatchOn && cad.length) &&
       !(houseOn && districts.length) &&
       !(zipOn && zipRows.length)
     )
@@ -1116,13 +1151,9 @@ export function TnMap({
     if (crimeOn && pts.length) {
       const kinds = crimeKindRef.current;
       const now = Date.now();
-      const cad: CrimePt[] = [];
       const plot: CrimePt[] = [];
       for (const c of pts) {
-        if (isDispatch(c)) {
-          cad.push(c);
-          continue;
-        }
+        if (isDispatch(c)) continue;
         if (kinds.h48 && isFresh48(c.date, now)) {
           plot.push(c);
           continue;
@@ -1130,7 +1161,6 @@ export function TnMap({
         const k = kindOf(c.type);
         if (k === "hom" && kinds.hom) plot.push(c);
         else if (k === "sht" && kinds.sht) plot.push(c);
-        else if (kinds.h48 && isFresh48(c.date, now)) plot.push(c);
       }
 
       const clipD = zoomedNow ? countyClipRef.current : "";
@@ -1236,39 +1266,6 @@ export function TnMap({
         for (const c of plot) drawPin(c, true);
       }
 
-      if (cad.length) {
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = "#8ec8e0";
-        ctx.strokeStyle = "#c5e6f2";
-        const cadGroups = wantCluster ? clusterXY(cad, cell) : cad.map((c) => ({ x: c.x, y: c.y, n: 1, items: [c] }));
-        for (const g of cadGroups) {
-          const c0 = g.items[0];
-          const sx = (g.x - cur.x) * s + ox;
-          const sy = (g.y - cur.y) * s + oy;
-          if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
-          stamp(sx, sy, true);
-          const rr = g.n > 1 ? Math.min(12, 6 + g.n) : 3.2;
-          ctx.save();
-          ctx.translate(sx, sy);
-          ctx.rotate(Math.PI / 4);
-          ctx.beginPath();
-          ctx.rect(-rr, -rr, rr * 2, rr * 2);
-          ctx.fill();
-          ctx.restore();
-          if (record) {
-            hits.current.push({
-              title: "Dispatch",
-              lines: g.n > 1 ? [`${g.n} active calls`] : crimeTipLines(c0),
-              x: sx,
-              y: sy,
-              r: rr + 8,
-              crime: g.n === 1 ? c0 : undefined,
-              cluster: g.n > 1 ? { x: g.x, y: g.y, n: g.n } : undefined,
-            });
-          }
-        }
-      }
-
       const one = pickedHdRef.current;
       if (one && projectRef.current && !houseOn) {
         const ring = (one.g[0] ?? []).map(([lon, lat]) => projectRef.current!(lon, lat));
@@ -1289,6 +1286,39 @@ export function TnMap({
       }
 
       if (clipD) ctx.restore();
+    }
+
+    if (dispatchOn && cad.length) {
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#8ec8e0";
+      ctx.strokeStyle = "#c5e6f2";
+      const groups = clusterXY(cad, zoomedNow ? 4 : 18);
+      for (const g of groups) {
+        const c0 = g.items[0];
+        const sx = (g.x - cur.x) * s + ox;
+        const sy = (g.y - cur.y) * s + oy;
+        if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
+        stamp(sx, sy, true);
+        const rr = g.n > 1 ? Math.min(12, 6 + g.n) : 3.2;
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(Math.PI / 4);
+        ctx.beginPath();
+        ctx.rect(-rr, -rr, rr * 2, rr * 2);
+        ctx.fill();
+        ctx.restore();
+        if (record) {
+          hits.current.push({
+            title: "Dispatch",
+            lines: g.n > 1 ? [`${g.n} active calls`] : [c0.offense || "MNPD CAD", c0.address].filter(Boolean),
+            x: sx,
+            y: sy,
+            r: rr + 8,
+            crime: g.n === 1 ? c0 : undefined,
+            cluster: g.n > 1 ? { x: g.x, y: g.y, n: g.n } : undefined,
+          });
+        }
+      }
     }
 
     if (sitesOn && sites.length) {
@@ -1424,7 +1454,7 @@ export function TnMap({
   useEffect(() => {
     if (drawRaf.current) cancelAnimationFrame(drawRaf.current);
     drawRaf.current = requestAnimationFrame(drawDots);
-  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, layers.house, crimeLayers, flights, housePts, zipPts, showZips, raceLayers, pickedZip]);
+  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, layers.dispatch, layers.house, crimeLayers, flights, dispatchPts, housePts, zipPts, showZips, raceLayers, pickedZip]);
 
   useEffect(() => {
     if (!showCrime) return;

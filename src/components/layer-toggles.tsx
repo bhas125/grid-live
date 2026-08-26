@@ -21,6 +21,7 @@ const ITEMS: { id: LayerId; label: string }[] = [
   { id: "flock", label: "Flock" },
   { id: "cameras", label: "Traffic Cam" },
   { id: "flights", label: "Flights" },
+  { id: "dispatch", label: "Dispatch" },
   { id: "house", label: "House" },
 ];
 

@@ -75,12 +75,19 @@ export function isImprecise(geo: GeoPrecision) {
   return geo === "county" || geo === "city" || geo === "zip" || geo === "place";
 }
 
+export function windowLabel(win: CrimeWindow) {
+  if (win === "today") return "today";
+  if (win === "7d") return "last 7 days";
+  if (win === "30d") return "last 30 days";
+  return "YTD";
+}
+
 export function filterCrime(
   rows: CrimeIncident[],
   opts: { window: CrimeWindow; agency: Record<CrimeAgency, boolean>; includeGva: boolean },
 ) {
   return rows.filter((c) => {
-    if (isDispatch(c)) return opts.agency.nash && inCrimeWindow(c.date, opts.window);
+    if (isDispatch(c)) return false;
     if (!opts.agency[agencyOf(c)]) return false;
     if (c.source === "GVA" && !opts.includeGva) return false;
     return inCrimeWindow(c.date, opts.window);

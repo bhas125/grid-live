@@ -130,7 +130,8 @@ export type LayerId =
   | "race"
   | "crime"
   | "flights"
-  | "house";
+  | "house"
+  | "dispatch";
 
 export type Layers = Record<LayerId, boolean>;
 

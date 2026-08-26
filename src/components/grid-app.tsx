@@ -24,9 +24,9 @@ import type {
 } from "@/data/types";
 import { COUNTY_XY } from "@/lib/county-xy";
 import { centroid, countyFipsAt, geomLonLatBBox, nearestCountyName, type MapPin } from "@/lib/geo";
-import { filterCrime, isDispatch } from "@/lib/crime-window";
+import { filterCrime, isDispatch, windowLabel } from "@/lib/crime-window";
 import { prefetchNews } from "@/lib/news-cache";
-import { cn } from "@/lib/utils";
+import { cn, fmtNum } from "@/lib/utils";
 import { AddressSearch } from "./address-search";
 import { CrimeShare, FeedPanel } from "./feed-panel";
 import { LayerToggles } from "./layer-toggles";
@@ -50,6 +50,7 @@ const DEFAULT_LAYERS: Layers = {
   race: false,
   crime: false,
   house: false,
+  dispatch: false,
 };
 
 const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, h48: false, reg: false };
@@ -101,7 +102,7 @@ export function GridApp() {
   const [crime, setCrime] = useState<CrimeIncident[]>([]);
   const [crimeLayers, setCrimeLayers] = useState<CrimeLayers>(DEFAULT_CRIME);
   const [crimeAgency, setCrimeAgency] = useState<CrimeAgencies>(DEFAULT_AGENCY);
-  const [crimeWindow, setCrimeWindow] = useState<CrimeWindow>("7d");
+  const [crimeWindow, setCrimeWindow] = useState<CrimeWindow>("30d");
   const [feedSize, setFeedSize] = useState<FeedSize>("dock");
   const [layersOpen, setLayersOpen] = useState(true);
   const [pin, setPin] = useState<MapPin | null>(null);
@@ -145,15 +146,21 @@ export function GridApp() {
   useEffect(() => {
     if (tab !== "crime" && !layers.crime) return;
     let live = true;
-    const mergeCad = (next: CrimeIncident[]) => {
-      if (!live || !next.length) return;
+    const mergeLive = (next: CrimeIncident[]) => {
+      if (!live) return;
+      const rows = next.filter((r) => !isDispatch(r) && r.source !== "MNPD_CAD" && r.type !== "Dispatch");
+      if (!rows.length) return;
       setCrime((prev) => {
+        if (!prev.length) return rows;
         const have = new Map(prev.map((r) => [r.id, r]));
-        for (const r of next) {
-          if (isDispatch(r)) have.set(r.id, r);
-          else if (!have.has(r.id)) have.set(r.id, r);
+        let added = 0;
+        for (const r of rows) {
+          if (!have.has(r.id)) {
+            have.set(r.id, r);
+            added += 1;
+          }
         }
-        return [...have.values()];
+        return added ? [...have.values()] : prev;
       });
     };
     const loadSnap = () => {
@@ -162,20 +169,21 @@ export function GridApp() {
         .then((d: CrimeIncident[]) => {
           if (!live) return;
           crimeLoaded.current = true;
-          const rows = Array.isArray(d) ? d : [];
-          setCrime((prev) => {
-            const cad = prev.filter(isDispatch);
-            return cad.length ? rows.concat(cad) : rows;
-          });
+          const rows = (Array.isArray(d) ? d : []).filter(
+            (r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch",
+          );
+          setCrime(rows);
         })
         .catch(() => undefined);
     };
     const loadLive = () => {
       if (document.visibilityState === "hidden") return;
-      fetch("/api/crime-live", { signal: AbortSignal.timeout(2800) })
+      fetch("/api/crime-live", { signal: AbortSignal.timeout(2500) })
         .then((r) => r.json())
-        .then((d: { incidents?: CrimeIncident[] }) => {
-          if (live) mergeCad(d.incidents ?? []);
+        .then((d: { incidents?: CrimeIncident[]; kind?: string }) => {
+          if (!live) return;
+          if (d.kind === "dispatch") return;
+          mergeLive(d.incidents ?? []);
         })
         .catch(() => undefined);
     };
@@ -493,6 +501,11 @@ export function GridApp() {
           <p className="font-mono text-xs tracking-widest text-faint uppercase">
             {selected ? `${selected.seat} · ${selected.division}` : "Tennessee"}
           </p>
+          {crime.length ? (
+            <p className="font-mono text-xs tracking-widest text-faint uppercase">
+              {fmtNum(visibleCrime.length)} · {windowLabel(crimeWindow)}
+            </p>
+          ) : null}
           <div className="relative mt-1 flex flex-col items-start">
             <AddressSearch pin={pin} onGo={goToPlace} onClear={clearPin} />
             <button

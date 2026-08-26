@@ -17,6 +17,7 @@ import { Route as ApiCrimeLiveRouteImport } from './routes/api/crime-live'
 import { Route as ApiCrimeNamesRouteImport } from './routes/api/crime-names'
 import { Route as ApiCrimeRefreshRouteImport } from './routes/api/crime-refresh'
 import { Route as ApiDebtRouteImport } from './routes/api/debt'
+import { Route as ApiDispatchRouteImport } from './routes/api/dispatch'
 import { Route as ApiFinanceNewsRouteImport } from './routes/api/finance-news'
 import { Route as ApiFlightsRouteImport } from './routes/api/flights'
 import { Route as ApiGateRouteImport } from './routes/api/gate'
@@ -66,6 +67,11 @@ const ApiCrimeRefreshRoute = ApiCrimeRefreshRouteImport.update({
 const ApiDebtRoute = ApiDebtRouteImport.update({
   id: '/api/debt',
   path: '/api/debt',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDispatchRoute = ApiDispatchRouteImport.update({
+  id: '/api/dispatch',
+  path: '/api/dispatch',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiFinanceNewsRoute = ApiFinanceNewsRouteImport.update({
@@ -128,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
   '/api/debt': typeof ApiDebtRoute
+  '/api/dispatch': typeof ApiDispatchRoute
   '/api/finance-news': typeof ApiFinanceNewsRoute
   '/api/flights': typeof ApiFlightsRoute
   '/api/gate': typeof ApiGateRoute
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
   '/api/debt': typeof ApiDebtRoute
+  '/api/dispatch': typeof ApiDispatchRoute
   '/api/finance-news': typeof ApiFinanceNewsRoute
   '/api/flights': typeof ApiFlightsRoute
   '/api/gate': typeof ApiGateRoute
@@ -169,6 +177,7 @@ export interface FileRoutesById {
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
   '/api/debt': typeof ApiDebtRoute
+  '/api/dispatch': typeof ApiDispatchRoute
   '/api/finance-news': typeof ApiFinanceNewsRoute
   '/api/flights': typeof ApiFlightsRoute
   '/api/gate': typeof ApiGateRoute
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/api/crime-names'
     | '/api/crime-refresh'
     | '/api/debt'
+    | '/api/dispatch'
     | '/api/finance-news'
     | '/api/flights'
     | '/api/gate'
@@ -211,6 +221,7 @@ export interface FileRouteTypes {
     | '/api/crime-names'
     | '/api/crime-refresh'
     | '/api/debt'
+    | '/api/dispatch'
     | '/api/finance-news'
     | '/api/flights'
     | '/api/gate'
@@ -231,6 +242,7 @@ export interface FileRouteTypes {
     | '/api/crime-names'
     | '/api/crime-refresh'
     | '/api/debt'
+    | '/api/dispatch'
     | '/api/finance-news'
     | '/api/flights'
     | '/api/gate'
@@ -252,6 +264,7 @@ export interface RootRouteChildren {
   ApiCrimeNamesRoute: typeof ApiCrimeNamesRoute
   ApiCrimeRefreshRoute: typeof ApiCrimeRefreshRoute
   ApiDebtRoute: typeof ApiDebtRoute
+  ApiDispatchRoute: typeof ApiDispatchRoute
   ApiFinanceNewsRoute: typeof ApiFinanceNewsRoute
   ApiFlightsRoute: typeof ApiFlightsRoute
   ApiGateRoute: typeof ApiGateRoute
@@ -320,6 +333,13 @@ declare module '@tanstack/react-router' {
       path: '/api/debt'
       fullPath: '/api/debt'
       preLoaderRoute: typeof ApiDebtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/dispatch': {
+      id: '/api/dispatch'
+      path: '/api/dispatch'
+      fullPath: '/api/dispatch'
+      preLoaderRoute: typeof ApiDispatchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/finance-news': {
@@ -404,6 +424,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCrimeNamesRoute: ApiCrimeNamesRoute,
   ApiCrimeRefreshRoute: ApiCrimeRefreshRoute,
   ApiDebtRoute: ApiDebtRoute,
+  ApiDispatchRoute: ApiDispatchRoute,
   ApiFinanceNewsRoute: ApiFinanceNewsRoute,
   ApiFlightsRoute: ApiFlightsRoute,
   ApiGateRoute: ApiGateRoute,
