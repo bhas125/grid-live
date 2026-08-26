@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CrimeKind, CrimeLayers, LayerId, Layers, RaceLayers, RaceSlice } from "@/data/types";
-import { CRIME_META, RACE_META } from "@/data/types";
+import type {
+  CrimeAgency,
+  CrimeAgencies,
+  CrimeKind,
+  CrimeLayers,
+  CrimeWindow,
+  LayerId,
+  Layers,
+  RaceLayers,
+  RaceSlice,
+} from "@/data/types";
+import { AGENCY_META, CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
 
 const ITEMS: { id: LayerId; label: string }[] = [
   { id: "interstates", label: "Roads" },
@@ -21,6 +31,10 @@ export function LayerToggles({
   onToggleRace,
   crimeLayers,
   onToggleCrime,
+  crimeAgency,
+  onToggleAgency,
+  crimeWindow,
+  onCrimeWindow,
 }: {
   layers: Layers;
   onToggle: (id: LayerId) => void;
@@ -28,6 +42,10 @@ export function LayerToggles({
   onToggleRace: (id: RaceSlice) => void;
   crimeLayers: CrimeLayers;
   onToggleCrime: (id: CrimeKind) => void;
+  crimeAgency: CrimeAgencies;
+  onToggleAgency: (id: CrimeAgency) => void;
+  crimeWindow: CrimeWindow;
+  onCrimeWindow: (id: CrimeWindow) => void;
   zoomed?: boolean;
 }) {
   const [raceOpen, setRaceOpen] = useState(layers.race);
@@ -81,25 +99,68 @@ export function LayerToggles({
         />
       </div>
       {layers.crime && crimeOpen ? (
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-          {CRIME_META.map((item) => {
-            const on = crimeLayers[item.id];
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onToggleCrime(item.id)}
-                aria-pressed={on}
-                className={cn(
-                  "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
-                  on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
-                )}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
+        <>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+            {CRIME_META.map((item) => {
+              const on = crimeLayers[item.id];
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onToggleCrime(item.id)}
+                  aria-pressed={on}
+                  className={cn(
+                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+                  )}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+            {WINDOW_META.map((item) => {
+              const on = crimeWindow === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onCrimeWindow(item.id)}
+                  aria-pressed={on}
+                  className={cn(
+                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    on
+                      ? "border-grid bg-grid/15 text-grid"
+                      : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+                  )}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+            <span className="mx-0.5 h-4 w-px bg-line" />
+            {AGENCY_META.map((item) => {
+              const on = crimeAgency[item.id];
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onToggleAgency(item.id)}
+                  aria-pressed={on}
+                  className={cn(
+                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    on
+                      ? "border-steel bg-steel/15 text-steel"
+                      : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+                  )}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
       ) : null}
       {layers.race && raceOpen ? (
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
@@ -140,32 +201,30 @@ function ExpandChip({
   onOpen: () => void;
 }) {
   return (
-    <div className="flex shrink-0">
+    <span className="inline-flex h-6 items-stretch overflow-hidden border border-line">
       <button
         type="button"
         onClick={onToggle}
         aria-pressed={on}
         className={cn(
-          "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
-          on
-            ? "border-grid bg-grid/15 text-grid"
-            : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
-          on ? "border-r-0" : undefined,
+          "px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+          on ? "bg-grid/15 text-grid" : "bg-surface/90 text-faint hover:text-muted",
         )}
       >
         {label}
       </button>
-      {on ? (
-        <button
-          type="button"
-          onClick={onOpen}
-          aria-expanded={open}
-          aria-label={open ? `Hide ${label} groups` : `Show ${label} groups`}
-          className="grid h-6 w-6 shrink-0 place-items-center border border-grid bg-grid/15 text-grid"
-        >
-          {open ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-        </button>
-      ) : null}
-    </div>
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-expanded={open}
+        aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+        className={cn(
+          "grid w-5 place-items-center border-l border-line",
+          on ? "text-grid" : "text-faint",
+        )}
+      >
+        {open ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+      </button>
+    </span>
   );
 }

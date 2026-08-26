@@ -144,6 +144,25 @@ export const CRIME_META: { id: CrimeKind; label: string; chip: string }[] = [
   { id: "reg", label: "Registry", chip: "border-steel bg-steel/15 text-steel" },
 ];
 
+export type CrimeAgency = "mem" | "nash" | "cha" | "rest";
+export type CrimeAgencies = Record<CrimeAgency, boolean>;
+export const AGENCY_META: { id: CrimeAgency; label: string }[] = [
+  { id: "mem", label: "Mem" },
+  { id: "nash", label: "Nash" },
+  { id: "cha", label: "Chat" },
+  { id: "rest", label: "Rest" },
+];
+
+export type CrimeWindow = "today" | "7d" | "30d" | "ytd";
+export const WINDOW_META: { id: CrimeWindow; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "7d", label: "7d" },
+  { id: "30d", label: "30d" },
+  { id: "ytd", label: "YTD" },
+];
+
+export type GeoPrecision = "address" | "intersection" | "block" | "place" | "zip" | "city" | "county";
+
 export type TabId = "news" | "sit" | "vote" | "gov" | "crime";
 
 export type ElectYear = "2024" | "2026";
@@ -260,6 +279,7 @@ export type CrimeIncident = {
   source: string;
   killed: number;
   injured: number;
+  geo?: GeoPrecision;
 };
 
 export type Flight = {

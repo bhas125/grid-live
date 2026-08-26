@@ -6,7 +6,6 @@ import type {
   Alert,
   County,
   CrimeIncident,
-  CrimeKind,
   CrimeLayers,
   ElectYear,
   NewsItem,
@@ -23,6 +22,7 @@ import { cn, fmtAge, fmtMargin, fmtNum, fmtPct } from "@/lib/utils";
 import { newsCacheAge, newsCacheKey, fetchNews, readNewsCache } from "@/lib/news-cache";
 import { zipTone } from "@/lib/race-tone";
 import { isFresh48 } from "@/lib/crime-fresh";
+import { crimeLabel, isHomicide, isShooting } from "@/lib/crime-window";
 import { AboutPanel } from "./about-panel";
 
 const TABS: { id: TabId; label: string }[] = [
@@ -53,21 +53,6 @@ function fmtCrimeDate(iso: string | null) {
   const month = MONTHS[Number(m) - 1];
   if (!month || !d) return iso;
   return `${month} ${Number(d)} ${y}`;
-}
-
-function isHomicide(type: string) {
-  return type === "Homicide";
-}
-
-function isShooting(type: string) {
-  const t = type.toLowerCase();
-  return t.includes("shooting") || t.includes("aggravated");
-}
-
-function kindOf(type: string): CrimeKind | null {
-  if (isHomicide(type)) return "hom";
-  if (isShooting(type)) return "sht";
-  return null;
 }
 
 function is2026(c: CrimeIncident) {
@@ -273,6 +258,7 @@ function CrimeFeed({
     () => ({ hom: homList.length, sht: shtList.length, n: homList.length + shtList.length }),
     [homList, shtList],
   );
+  const hasGva = useMemo(() => scoped.some((i) => i.source === "GVA"), [scoped]);
 
   useEffect(() => {
     setShownHom(PAGE);
@@ -309,8 +295,11 @@ function CrimeFeed({
         ) : county ? (
           (intel?.crimeNote ?? `${county.name} · 2026 homicide / shooting points.`)
         ) : (
-          "Latest 2026 homicides first, then shootings. MNPD, MPD, CPD, GVA, and statewide news."
+          "Latest 2026 homicides first, then shootings. MNPD, MPD, CPD, and statewide news."
         )}
+        {hasGva ? (
+          <span className="mt-1 block text-faint">GVA through Jun 28 2026 — not a live statewide fill.</span>
+        ) : null}
       </p>
       {!incidents.length ? (
         <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">Loading incidents</p>
@@ -359,7 +348,7 @@ function CrimeRows({
             >
               <div className="flex items-center gap-2 font-mono text-xs tracking-wide uppercase">
                 <span className={isFresh48(it.date) ? "text-fresh" : isHomicide(it.type) ? "text-hot" : "text-watch"}>
-                  {isFresh48(it.date) ? `48h · ${it.type}` : it.type}
+                  {isFresh48(it.date) ? `48h · ${crimeLabel(it.type)}` : crimeLabel(it.type)}
                 </span>
                 <span className="ml-auto text-faint">{fmtCrimeDate(it.date)}</span>
               </div>

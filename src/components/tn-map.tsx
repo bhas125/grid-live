@@ -5,6 +5,17 @@ import roadsJson from "@/data/roads.json";
 import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
 import { isFresh48 } from "@/lib/crime-fresh";
+import { clusterXY } from "@/lib/crime-cluster";
+import { hdLine, houseAtLonLat } from "@/lib/house-at";
+import {
+  crimeLabel,
+  inferGeo,
+  isDenseCounty,
+  isDispatch,
+  isHomicide,
+  isImprecise,
+  isShooting,
+} from "@/lib/crime-window";
 import type {
   Alert,
   AlprPoint,
@@ -67,6 +78,13 @@ const overlayMem: {
   sor: SorPoint[] | null;
   house: HouseDistrict[] | null;
 } = { alpr: null, cams: null, sor: null, house: null };
+
+function hdFor(c: CrimeIncident) {
+  const list = overlayMem.house;
+  if (!list?.length) return null;
+  const h = houseAtLonLat(list, c.lon, c.lat);
+  return h ? hdLine(h) : null;
+}
 
 const TIP_W = 224;
 const TIP_GAP = 28;
@@ -150,6 +168,7 @@ type Hit = {
   cam?: TrafficCam;
   sor?: SorPoint;
   flight?: Flight;
+  cluster?: { x: number; y: number; n: number };
 };
 
 type Tip = {
@@ -202,30 +221,11 @@ function zipHud(z: ZipRace, layers: RaceLayers) {
   };
 }
 
-function isHomicide(type: string) {
-  return type === "Homicide";
-}
-
-function isShooting(type: string) {
-  const t = type.toLowerCase();
-  return t.includes("shooting") || t.includes("aggravated");
-}
-
 function kindOf(type: string): CrimeKind | null {
+  if (type === "Dispatch") return null;
   if (isHomicide(type)) return "hom";
   if (isShooting(type)) return "sht";
   return null;
-}
-
-function thinShootings(rows: CrimeIncident[]) {
-  const keep: CrimeIncident[] = [];
-  const sht: CrimeIncident[] = [];
-  for (const c of rows) {
-    if (isHomicide(c.type)) keep.push(c);
-    else sht.push(c);
-  }
-  sht.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  return [...keep, ...sht.slice(0, 220)];
 }
 
 function fmtCrimeDate(iso: string | null) {
@@ -275,8 +275,11 @@ function crimeHud(c: CrimeIncident) {
   const when = fmtCrimeDate(c.date);
   const where = c.address || [c.city, c.county ? `${c.county} County` : ""].filter(Boolean).join(", ");
   const zip = crimeZip(c);
+  const geo = inferGeo(c);
+  const tag = isDispatch(c) ? "Dispatch" : crimeLabel(c.type);
+  const fuzzy = isImprecise(geo) ? geo : "";
   return {
-    a: `${c.type}${when ? ` · ${when}` : ""}`,
+    a: `${tag}${when ? ` · ${when}` : ""}${fuzzy ? ` · ${fuzzy}` : ""}`,
     b: zip ? `${where} · ${zip}` : where,
   };
 }
@@ -463,6 +466,7 @@ export function TnMap({
   const [picked, setPicked] = useState<{
     crime: CrimeIncident;
     names: CrimeNames | null | undefined;
+    hd: string | null;
   } | null>(null);
   const [pickedCam, setPickedCam] = useState<TrafficCam | null>(null);
   const [pickedSor, setPickedSor] = useState<{ point: SorPoint; person: SorPerson | null | undefined } | null>(null);
@@ -483,6 +487,7 @@ export function TnMap({
   const commitTimer = useRef<number | null>(null);
   const hits = useRef<Hit[]>([]);
   const busy = useRef(false);
+  const pickedHdRef = useRef<HouseDistrict | null>(null);
   const pinEl = useRef<HTMLDivElement>(null);
   const pinRef = useRef(pin);
   pinRef.current = pin;
@@ -517,9 +522,9 @@ export function TnMap({
   }, [layers.flock]);
 
   useEffect(() => {
-    if (!layers.house) return;
+    if (!layers.house && !showCrime) return;
     if (overlayMem.house) {
-      setHouse(overlayMem.house);
+      if (layers.house) setHouse(overlayMem.house);
       return;
     }
     let live = true;
@@ -527,13 +532,13 @@ export function TnMap({
       .then((r) => r.json())
       .then((d: HouseDistrict[]) => {
         overlayMem.house = Array.isArray(d) ? d : [];
-        if (live) setHouse(overlayMem.house);
+        if (live && layers.house) setHouse(overlayMem.house);
       })
       .catch(() => undefined);
     return () => {
       live = false;
     };
-  }, [layers.house]);
+  }, [layers.house, showCrime]);
 
   useEffect(() => {
     if (!layers.cameras) return;
@@ -691,23 +696,27 @@ export function TnMap({
 
   const crimePts = useMemo(() => {
     if (!project || !showCrime) return [] as CrimePt[];
-    if (!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.h48) return [] as CrimePt[];
     let rows = crime;
-    rows = rows.filter((c) => {
-      if (!(c.date ?? "").startsWith("2026")) return false;
-      if (c.source === "News") {
-        const t = `${c.address ?? ""} ${c.offense ?? ""}`;
-        if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
-      }
-      if (selected && c.county !== selected.name) return false;
-      const k = kindOf(c.type);
-      if (!k) return false;
-      const fresh = isFresh48(c.date);
-      if (crimeLayers.h48 && fresh) return true;
-      if (k === "hom") return crimeLayers.hom;
-      if (k === "sht") return crimeLayers.sht;
-      return false;
-    });
+    if (!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.h48) {
+      rows = rows.filter((c) => isDispatch(c) && (!selected || c.county === selected.name));
+    } else {
+      rows = rows.filter((c) => {
+        if (isDispatch(c)) return !selected || c.county === selected.name;
+        if (!(c.date ?? "").startsWith("2026")) return false;
+        if (c.source === "News") {
+          const t = `${c.address ?? ""} ${c.offense ?? ""}`;
+          if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
+        }
+        if (selected && c.county !== selected.name) return false;
+        const k = kindOf(c.type);
+        if (!k) return false;
+        const fresh = isFresh48(c.date);
+        if (crimeLayers.h48 && fresh) return true;
+        if (k === "hom") return crimeLayers.hom;
+        if (k === "sht") return crimeLayers.sht;
+        return false;
+      });
+    }
     if (pin) rows = rows.filter((c) => nearPin(c.lat, c.lon, pin));
     return rows.map((c) => {
       const p = project(c.lon, c.lat);
@@ -1107,17 +1116,21 @@ export function TnMap({
     if (crimeOn && pts.length) {
       const kinds = crimeKindRef.current;
       const now = Date.now();
-      const sht: CrimePt[] = [];
-      const hom: CrimePt[] = [];
-      const fresh: CrimePt[] = [];
+      const cad: CrimePt[] = [];
+      const plot: CrimePt[] = [];
       for (const c of pts) {
+        if (isDispatch(c)) {
+          cad.push(c);
+          continue;
+        }
         if (kinds.h48 && isFresh48(c.date, now)) {
-          fresh.push(c);
+          plot.push(c);
           continue;
         }
         const k = kindOf(c.type);
-        if (k === "hom") hom.push(c);
-        else if (k === "sht") sht.push(c);
+        if (k === "hom" && kinds.hom) plot.push(c);
+        else if (k === "sht" && kinds.sht) plot.push(c);
+        else if (kinds.h48 && isFresh48(c.date, now)) plot.push(c);
       }
 
       const clipD = zoomedNow ? countyClipRef.current : "";
@@ -1130,71 +1143,149 @@ export function TnMap({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
-      const drawBatch = (rows: CrimePt[], color: string, r: number, a: number, skip: boolean) => {
-        if (!rows.length) return;
-        ctx.fillStyle = color;
-        ctx.globalAlpha = a;
-        ctx.beginPath();
-        for (const c of rows) {
-          const sx = (c.x - cur.x) * s + ox;
-          const sy = (c.y - cur.y) * s + oy;
-          if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
-          if (!stamp(sx, sy, !skip)) continue;
-          ctx.moveTo(sx + r, sy);
-          ctx.arc(sx, sy, r, 0, Math.PI * 2);
-          if (record) {
-            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 8, crime: c });
-          }
-        }
-        ctx.fill();
+      const fitW = fitRef.current.w || cur.w;
+      const ratio = fitW / Math.max(1, cur.w);
+      const dense = isDenseCounty(selectedRef.current?.name);
+      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
+      const cell = !zoomedNow ? 22 : 5.8;
+
+      const pinColor = (c: CrimePt) => {
+        if (kinds.h48 && isFresh48(c.date, now)) return "#c45cff";
+        if (isHomicide(c.type)) return "#ff4d4d";
+        return "#ffb347";
       };
 
-      if (kinds.sht) drawBatch(sht, "#ffb347", s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35, 0.8, !tight);
-
-      if (kinds.hom && hom.length) {
-        const r = s > 4 ? 3.15 : s > 1.4 ? 2.55 : 2.05;
-        ctx.fillStyle = "#ff4d4d";
-        ctx.strokeStyle = "#ff9a9a";
-        ctx.lineWidth = 0.7;
-        ctx.globalAlpha = 0.78;
+      const drawPin = (c: CrimePt, force: boolean) => {
+        const sx = (c.x - cur.x) * s + ox;
+        const sy = (c.y - cur.y) * s + oy;
+        if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) return;
+        if (!stamp(sx, sy, force)) return;
+        const geo = inferGeo(c);
+        const fuzzy = isImprecise(geo);
+        const hom = isHomicide(c.type);
+        const r = hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35;
+        const col = pinColor(c);
         ctx.beginPath();
-        for (const c of hom) {
-          const sx = (c.x - cur.x) * s + ox;
-          const sy = (c.y - cur.y) * s + oy;
-          if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
-          stamp(sx, sy, true);
-          ctx.moveTo(sx + r, sy);
-          ctx.arc(sx, sy, r, 0, Math.PI * 2);
-          if (record) {
-            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 9, crime: c });
+        ctx.arc(sx, sy, fuzzy ? r + 1.1 : r, 0, Math.PI * 2);
+        if (fuzzy) {
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.15;
+          ctx.globalAlpha = 0.85;
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = col;
+          ctx.globalAlpha = 0.82;
+          ctx.fill();
+          if (hom || (kinds.h48 && isFresh48(c.date, now))) {
+            ctx.strokeStyle = "#ffd6d6";
+            ctx.lineWidth = 0.7;
+            ctx.globalAlpha = 0.9;
+            ctx.stroke();
           }
         }
-        ctx.fill();
-        ctx.globalAlpha = 0.9;
-        ctx.stroke();
+        if (record) {
+          hits.current.push({
+            title: crimeLabel(c.type),
+            lines: crimeTipLines(c),
+            x: sx,
+            y: sy,
+            r: r + (fuzzy ? 10 : 8),
+            crime: c,
+          });
+        }
+      };
+
+      if (wantCluster) {
+        const groups = clusterXY(plot, cell);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "600 10px 'IBM Plex Mono', ui-monospace, monospace";
+        for (const g of groups) {
+          const sx = (g.x - cur.x) * s + ox;
+          const sy = (g.y - cur.y) * s + oy;
+          if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
+          if (g.n === 1) {
+            drawPin(g.items[0], true);
+            continue;
+          }
+          if (!stamp(sx, sy, true)) continue;
+          const homN = g.items.filter((it) => isHomicide(it.type)).length;
+          const freshN = g.items.filter((it) => kinds.h48 && isFresh48(it.date, now)).length;
+          const fill = freshN === g.n ? "#c45cff" : homN === g.n ? "#ff4d4d" : homN ? "#ff7a4d" : "#ffb347";
+          const rr = Math.min(16, 7 + Math.log2(g.n) * 2.2);
+          ctx.beginPath();
+          ctx.fillStyle = fill;
+          ctx.globalAlpha = 0.88;
+          ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 0.95;
+          ctx.fillStyle = "#020308";
+          ctx.fillText(String(g.n), sx, sy + 0.5);
+          if (record) {
+            hits.current.push({
+              title: `${g.n} incidents`,
+              lines: [`${homN} hom · ${g.n - homN} sht`],
+              x: sx,
+              y: sy,
+              r: rr + 8,
+              cluster: { x: g.x, y: g.y, n: g.n },
+            });
+          }
+        }
+      } else {
+        for (const c of plot) drawPin(c, true);
       }
 
-      if (kinds.h48 && fresh.length) {
-        const r = s > 4 ? 3.35 : s > 1.4 ? 2.7 : 2.2;
-        ctx.fillStyle = "#c45cff";
-        ctx.strokeStyle = "#e4b8ff";
-        ctx.lineWidth = 0.85;
-        ctx.globalAlpha = 0.92;
-        ctx.beginPath();
-        for (const c of fresh) {
-          const sx = (c.x - cur.x) * s + ox;
-          const sy = (c.y - cur.y) * s + oy;
+      if (cad.length) {
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = "#8ec8e0";
+        ctx.strokeStyle = "#c5e6f2";
+        const cadGroups = wantCluster ? clusterXY(cad, cell) : cad.map((c) => ({ x: c.x, y: c.y, n: 1, items: [c] }));
+        for (const g of cadGroups) {
+          const c0 = g.items[0];
+          const sx = (g.x - cur.x) * s + ox;
+          const sy = (g.y - cur.y) * s + oy;
           if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
           stamp(sx, sy, true);
-          ctx.moveTo(sx + r, sy);
-          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          const rr = g.n > 1 ? Math.min(12, 6 + g.n) : 3.2;
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(Math.PI / 4);
+          ctx.beginPath();
+          ctx.rect(-rr, -rr, rr * 2, rr * 2);
+          ctx.fill();
+          ctx.restore();
           if (record) {
-            hits.current.push({ title: c.type, lines: crimeTipLines(c), x: sx, y: sy, r: r + 10, crime: c });
+            hits.current.push({
+              title: "Dispatch",
+              lines: g.n > 1 ? [`${g.n} active calls`] : crimeTipLines(c0),
+              x: sx,
+              y: sy,
+              r: rr + 8,
+              crime: g.n === 1 ? c0 : undefined,
+              cluster: g.n > 1 ? { x: g.x, y: g.y, n: g.n } : undefined,
+            });
           }
         }
-        ctx.fill();
-        ctx.globalAlpha = 0.95;
-        ctx.stroke();
+      }
+
+      const one = pickedHdRef.current;
+      if (one && projectRef.current && !houseOn) {
+        const ring = (one.g[0] ?? []).map(([lon, lat]) => projectRef.current!(lon, lat));
+        if (ring.length > 2) {
+          ctx.beginPath();
+          ctx.strokeStyle = "#c9a45c";
+          ctx.lineWidth = 1.4;
+          ctx.globalAlpha = 0.9;
+          const p0 = ring[0];
+          ctx.moveTo((p0.x - cur.x) * s + ox, (p0.y - cur.y) * s + oy);
+          for (let i = 1; i < ring.length; i++) {
+            const p = ring[i];
+            ctx.lineTo((p.x - cur.x) * s + ox, (p.y - cur.y) * s + oy);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        }
       }
 
       if (clipD) ctx.restore();
@@ -1312,10 +1403,11 @@ export function TnMap({
     const c = crime.find((x) => x.id === focusCrimeId);
     if (!c) return;
     const cached = readCrimeNames(c.id);
-    setPicked({ crime: c, names: cached });
+    setPicked({ crime: c, names: cached, hd: hdFor(c) });
+    pickedHdRef.current = overlayMem.house ? houseAtLonLat(overlayMem.house, c.lon, c.lat) : null;
     if (cached !== undefined) return;
     void fetchCrimeNames(c).then((names) => {
-      setPicked((cur) => (cur?.crime.id === c.id ? { crime: c, names } : cur));
+      setPicked((cur) => (cur?.crime.id === c.id ? { ...cur, names } : cur));
     });
     // crime list is live; pin zoom is driven by focusTick
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1506,7 +1598,7 @@ export function TnMap({
     const my = clientY - box.top;
     let best: { h: Hit; d: number } | null = null;
     for (const h of hits.current) {
-      if (pickable && !h.crime && !h.cam && !h.sor) continue;
+      if (pickable && !h.crime && !h.cam && !h.sor && !h.cluster) continue;
       const d = (h.x - mx) ** 2 + (h.y - my) ** 2;
       if (d <= h.r * h.r && (!best || d < best.d)) best = { h, d };
     }
@@ -1577,6 +1669,19 @@ export function TnMap({
 
   function pickDotAt(clientX: number, clientY: number) {
     const h = hitAt(clientX, clientY, true);
+    if (h?.cluster) {
+      stealClick.current = true;
+      skipSelect.current = true;
+      setTip(null);
+      const span = Math.max(8, (viewRef.current.w * 0.42) / Math.max(1, Math.log2(h.cluster.n + 1)));
+      animateTo({
+        x: h.cluster.x - span / 2,
+        y: h.cluster.y - span / 2,
+        w: span,
+        h: span * 0.55,
+      });
+      return true;
+    }
     if (h?.cam) {
       stealClick.current = true;
       setTip(null);
@@ -1630,10 +1735,11 @@ export function TnMap({
     setPickedSor(null);
     const c = h.crime;
     const cached = readCrimeNames(c.id);
-    setPicked({ crime: c, names: cached });
+    setPicked({ crime: c, names: cached, hd: hdFor(c) });
+    pickedHdRef.current = overlayMem.house ? houseAtLonLat(overlayMem.house, c.lon, c.lat) : null;
     if (cached === undefined) {
       void fetchCrimeNames(c).then((names) => {
-        setPicked((cur) => (cur?.crime.id === c.id ? { crime: c, names } : cur));
+        setPicked((cur) => (cur?.crime.id === c.id ? { ...cur, names } : cur));
       });
     }
     return true;
@@ -1713,6 +1819,14 @@ export function TnMap({
           setHoverHouse(null);
           applyZipHud(null);
           setHoverFlight(flightHud(h.flight));
+          return;
+        }
+        if (h?.cluster) {
+          setTip(null);
+          setHoverFlight(null);
+          setHoverHouse(null);
+          applyZipHud(null);
+          setHoverCrime({ a: h.title, b: h.lines[0] ?? "Zoom in" });
           return;
         }
         if (h?.crime) {
@@ -2135,7 +2249,10 @@ export function TnMap({
         >
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
-              <div className="font-mono text-[10px] tracking-widest text-hot uppercase">{picked.crime.type}</div>
+              <div className="font-mono text-[10px] tracking-widest text-hot uppercase">
+                {isDispatch(picked.crime) ? "Dispatch" : crimeLabel(picked.crime.type)}
+                {picked.crime.source === "GVA" ? " · GVA Jun" : ""}
+              </div>
               <div className="mt-0.5 text-sm font-medium leading-snug">
                 {picked.crime.address || `${picked.crime.city}, ${picked.crime.county} County`}
               </div>
@@ -2143,7 +2260,11 @@ export function TnMap({
                 {fmtCrimeDate(picked.crime.date)}
                 {picked.crime.city ? ` · ${picked.crime.city}` : ""}
                 {picked.crime.zip ? ` · ${picked.crime.zip}` : ""}
+                {isImprecise(inferGeo(picked.crime)) ? ` · ${inferGeo(picked.crime)} pin` : ""}
               </div>
+              {picked.hd ? (
+                <div className="mt-0.5 font-mono text-[10px] tracking-widest text-grid uppercase">{picked.hd}</div>
+              ) : null}
             </div>
             <button
               type="button"
