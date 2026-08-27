@@ -281,6 +281,7 @@ export type CrimeIncident = {
   killed: number;
   injured: number;
   geo?: GeoPrecision;
+  href?: string;
 };
 
 export type Flight = {

@@ -79,6 +79,7 @@ const overlayMem: {
 } = { alpr: null, cams: null, sor: null, house: null };
 
 function storyHref(c: CrimeIncident, names?: CrimeNames | null) {
+  if (c.href) return c.href;
   if (names?.href) return names.href;
   const q = `"${c.address}" ${c.county} County Tennessee ${c.date ?? ""}`.replace(/\s+/g, " ").trim();
   return `https://news.google.com/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
