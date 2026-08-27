@@ -691,6 +691,13 @@ export function TnMap({
   }, [showZips, project, zips]);
   const zipPtsRef = useRef(zipPts);
   zipPtsRef.current = zipPts;
+  const zipPaths = useMemo(() => {
+    if (!showZips || !project || !zips.length) return [] as { zip: ZipRace; d: string }[];
+    return zips.map((z) => ({
+      zip: z,
+      d: pathFromGeom(z.g, project),
+    }));
+  }, [showZips, project, zips]);
   const countyClipRef = useRef("");
   const countyGeomRef = useRef<GeoFeature["geometry"] | null>(null);
   countyClipRef.current = selected ? (paths.find((p) => p.fips === selected.fips)?.d ?? "") : "";
@@ -1027,41 +1034,6 @@ export function TnMap({
       seen[gi] = 1;
       return true;
     };
-
-    if (zipOn && zipRows.length) {
-      ctx.globalAlpha = 1;
-      const layersOn = raceLayersRef.current ?? { w: false, b: false, h: false, a: false, o: false };
-      const fitW = fitRef.current.w || cur.w;
-      const ratio = fitW / Math.max(1, cur.w);
-      const fade =
-        ratio <= 1.04 ? 0.8 : ratio < 1.7 ? 0.8 - ((ratio - 1.04) / 0.66) * 0.42 : Math.max(0.15, 0.38 - (ratio - 1.7) * 0.06);
-      ctx.save();
-      ctx.translate(ox, oy);
-      ctx.scale(s, s);
-      ctx.translate(-cur.x, -cur.y);
-      const clipD = countyClipRef.current;
-      if (clipD) ctx.clip(new Path2D(clipD));
-      ctx.lineJoin = "round";
-      ctx.lineWidth = 0.55 / Math.max(0.4, s);
-      for (const row of zipRows) {
-        if (row.maxX < cur.x - 2 || row.minX > cur.x + cur.w + 2 || row.maxY < cur.y - 2 || row.minY > cur.y + cur.h + 2)
-          continue;
-        const tone = zipTone(row.z, layersOn);
-        ctx.fillStyle = tone.fill;
-        ctx.strokeStyle = tone.tone === "white" ? "#f4f4f2" : tone.tone === "black" ? "#4a4c50" : "#84888e";
-        ctx.globalAlpha = tone.opacity * fade;
-        ctx.beginPath();
-        for (const ring of row.rings) {
-          ctx.moveTo(ring[0].x, ring[0].y);
-          for (let i = 1; i < ring.length; i++) ctx.lineTo(ring[i].x, ring[i].y);
-          ctx.closePath();
-        }
-        ctx.fill("evenodd");
-        ctx.globalAlpha = fade * 0.4;
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
 
     if (flockOn && cameras.length) {
       const r = zoomedNow ? 2.8 : 2.5;
@@ -2017,6 +1989,49 @@ export function TnMap({
                 </g>
               </g>
             )}
+            {zoomed && showZips ? (
+              <g mask="url(#zip-mask)">
+                {zipPaths.map(({ zip: z, d }) => {
+                  const picked = pickedZip === z.z;
+                  const dimZip = Boolean(pickedZip && !picked);
+                  const layersOn = raceLayers ?? { w: false, b: false, h: false, a: false, o: false };
+                  const tone = zipTone(z, layersOn);
+                  const hud = zipHud(z, layersOn);
+                  const stroke = picked
+                    ? "var(--color-fg)"
+                    : tone.tone === "white"
+                      ? "var(--color-race-white)"
+                      : tone.tone === "black"
+                        ? "#4a4c50"
+                        : "var(--color-race-gray)";
+                  return (
+                    <path
+                      key={z.z}
+                      d={d}
+                      data-zip={z.z}
+                      fill={tone.fill}
+                      fillOpacity={dimZip ? 0.28 : picked ? 0.9 : tone.opacity}
+                      fillRule="evenodd"
+                      stroke={stroke}
+                      strokeWidth={picked ? 0.45 : 0.22}
+                      strokeOpacity={tone.tone === "none" ? 0.35 : 0.75}
+                      className="cursor-pointer"
+                      onMouseEnter={() => setHoverZip(hud)}
+                      onMouseMove={() => setHoverZip(hud)}
+                      onMouseLeave={() => setHoverZip(null)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (stealClick.current) {
+                          stealClick.current = false;
+                          return;
+                        }
+                        onPickZip?.(z);
+                      }}
+                    />
+                  );
+                })}
+              </g>
+            ) : null}
             {zoomed && layers.p24 && !showZips
               ? precincts.map((pr) => {
                   const tot = pr.t || 1;
