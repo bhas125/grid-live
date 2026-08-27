@@ -6,7 +6,6 @@ import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
 import { isFresh48 } from "@/lib/crime-fresh";
 import { clusterXY } from "@/lib/crime-cluster";
-import { hdLine, houseAtLonLat } from "@/lib/house-at";
 import {
   crimeLabel,
   inferGeo,
@@ -79,11 +78,10 @@ const overlayMem: {
   house: HouseDistrict[] | null;
 } = { alpr: null, cams: null, sor: null, house: null };
 
-function hdFor(c: CrimeIncident) {
-  const list = overlayMem.house;
-  if (!list?.length) return null;
-  const h = houseAtLonLat(list, c.lon, c.lat);
-  return h ? hdLine(h) : null;
+function storyHref(c: CrimeIncident, names?: CrimeNames | null) {
+  if (names?.href) return names.href;
+  const q = `"${c.address}" ${c.county} County Tennessee ${c.date ?? ""}`.replace(/\s+/g, " ").trim();
+  return `https://news.google.com/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
 }
 
 const TIP_W = 224;
@@ -467,7 +465,6 @@ export function TnMap({
   const [picked, setPicked] = useState<{
     crime: CrimeIncident;
     names: CrimeNames | null | undefined;
-    hd: string | null;
   } | null>(null);
   const [pickedCam, setPickedCam] = useState<TrafficCam | null>(null);
   const [pickedSor, setPickedSor] = useState<{ point: SorPoint; person: SorPerson | null | undefined } | null>(null);
@@ -488,7 +485,6 @@ export function TnMap({
   const commitTimer = useRef<number | null>(null);
   const hits = useRef<Hit[]>([]);
   const busy = useRef(false);
-  const pickedHdRef = useRef<HouseDistrict | null>(null);
   const pinEl = useRef<HTMLDivElement>(null);
   const pinRef = useRef(pin);
   pinRef.current = pin;
@@ -523,9 +519,12 @@ export function TnMap({
   }, [layers.flock]);
 
   useEffect(() => {
-    if (!layers.house && !showCrime) return;
+    if (!layers.house) {
+      setHouse([]);
+      return;
+    }
     if (overlayMem.house) {
-      if (layers.house) setHouse(overlayMem.house);
+      setHouse(overlayMem.house);
       return;
     }
     let live = true;
@@ -533,13 +532,13 @@ export function TnMap({
       .then((r) => r.json())
       .then((d: HouseDistrict[]) => {
         overlayMem.house = Array.isArray(d) ? d : [];
-        if (live && layers.house) setHouse(overlayMem.house);
+        if (live) setHouse(overlayMem.house);
       })
       .catch(() => undefined);
     return () => {
       live = false;
     };
-  }, [layers.house, showCrime]);
+  }, [layers.house]);
 
   useEffect(() => {
     if (!layers.cameras) return;
@@ -1245,25 +1244,6 @@ export function TnMap({
         for (const c of plot) drawPin(c, true);
       }
 
-      const one = pickedHdRef.current;
-      if (one && projectRef.current && !houseOn) {
-        const ring = (one.g[0] ?? []).map(([lon, lat]) => projectRef.current!(lon, lat));
-        if (ring.length > 2) {
-          ctx.beginPath();
-          ctx.strokeStyle = "#c9a45c";
-          ctx.lineWidth = 1.4;
-          ctx.globalAlpha = 0.9;
-          const p0 = ring[0];
-          ctx.moveTo((p0.x - cur.x) * s + ox, (p0.y - cur.y) * s + oy);
-          for (let i = 1; i < ring.length; i++) {
-            const p = ring[i];
-            ctx.lineTo((p.x - cur.x) * s + ox, (p.y - cur.y) * s + oy);
-          }
-          ctx.closePath();
-          ctx.stroke();
-        }
-      }
-
       if (clipD) ctx.restore();
     }
 
@@ -1412,8 +1392,7 @@ export function TnMap({
     const c = crime.find((x) => x.id === focusCrimeId);
     if (!c) return;
     const cached = readCrimeNames(c.id);
-    setPicked({ crime: c, names: cached, hd: hdFor(c) });
-    pickedHdRef.current = overlayMem.house ? houseAtLonLat(overlayMem.house, c.lon, c.lat) : null;
+    setPicked({ crime: c, names: cached });
     if (cached !== undefined) return;
     void fetchCrimeNames(c).then((names) => {
       setPicked((cur) => (cur?.crime.id === c.id ? { ...cur, names } : cur));
@@ -1744,8 +1723,7 @@ export function TnMap({
     setPickedSor(null);
     const c = h.crime;
     const cached = readCrimeNames(c.id);
-    setPicked({ crime: c, names: cached, hd: hdFor(c) });
-    pickedHdRef.current = overlayMem.house ? houseAtLonLat(overlayMem.house, c.lon, c.lat) : null;
+    setPicked({ crime: c, names: cached });
     if (cached === undefined) {
       void fetchCrimeNames(c).then((names) => {
         setPicked((cur) => (cur?.crime.id === c.id ? { ...cur, names } : cur));
@@ -2299,7 +2277,10 @@ export function TnMap({
       {picked ? (
         <div
           data-map-card
-          className="absolute bottom-2 left-12 z-20 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+          className="pointer-events-auto absolute bottom-2 left-12 z-20 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1">
@@ -2307,18 +2288,20 @@ export function TnMap({
                 {isDispatch(picked.crime) ? "Dispatch" : crimeLabel(picked.crime.type)}
                 {picked.crime.source === "GVA" ? " · GVA Jun" : ""}
               </div>
-              <div className="mt-0.5 text-sm font-medium leading-snug">
-                {picked.crime.address || `${picked.crime.city}, ${picked.crime.county} County`}
-              </div>
+              <a
+                href={storyHref(picked.crime, picked.names)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-0.5 block text-sm font-medium leading-snug text-fg hover:text-grid hover:underline"
+              >
+                {picked.names?.note || picked.crime.address || `${picked.crime.city}, ${picked.crime.county} County`}
+              </a>
               <div className="mt-0.5 font-mono text-[10px] tracking-widest text-faint uppercase">
                 {fmtCrimeDate(picked.crime.date)}
                 {picked.crime.city ? ` · ${picked.crime.city}` : ""}
                 {picked.crime.zip ? ` · ${picked.crime.zip}` : ""}
                 {isImprecise(inferGeo(picked.crime)) ? ` · ${inferGeo(picked.crime)} pin` : ""}
               </div>
-              {picked.hd ? (
-                <div className="mt-0.5 font-mono text-[10px] tracking-widest text-grid uppercase">{picked.hd}</div>
-              ) : null}
             </div>
             <button
               type="button"
