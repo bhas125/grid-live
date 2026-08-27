@@ -228,6 +228,12 @@ export function GridApp() {
   }, [tab, layers.crime]);
 
   useEffect(() => {
+    if (!layers.crime) return;
+    if (crimeLayers.hom || crimeLayers.sht || crimeLayers.h48 || crimeLayers.reg) return;
+    setCrimeLayers(DEFAULT_CRIME);
+  }, [layers.crime, crimeLayers]);
+
+  useEffect(() => {
     if (!selected || !layers.race) {
       setZips(null);
       return;
@@ -381,6 +387,9 @@ export function GridApp() {
   function handleTab(t: TabId) {
     if (t === "crime") {
       setCrimeWindow("ytd");
+      setCrimeLayers((prev) =>
+        prev.hom || prev.sht || prev.h48 || prev.reg ? prev : DEFAULT_CRIME,
+      );
       setLayers((prev) => ({
         ...prev,
         crime: true,
@@ -438,6 +447,9 @@ export function GridApp() {
     if (id === "crime" && !layers.crime) {
       setTab("crime");
       setCrimeWindow("ytd");
+      setCrimeLayers((prev) =>
+        prev.hom || prev.sht || prev.h48 || prev.reg ? prev : DEFAULT_CRIME,
+      );
     }
     setLayers((prev) => ({ ...prev, [id]: !prev[id] }));
   }

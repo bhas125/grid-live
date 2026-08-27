@@ -1149,8 +1149,9 @@ export function TnMap({
       const fitW = fitRef.current.w || cur.w;
       const ratio = fitW / Math.max(1, cur.w);
       const dense = isDenseCounty(selectedRef.current?.name);
-      const wantCluster = !zoomedNow || (!showZipsRef.current && dense && ratio < 2.2);
+      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
       const cell = !zoomedNow ? 22 : 5.8;
+      const overRace = showZipsRef.current;
 
       const pinColor = (c: CrimePt) => {
         if (kinds.h48 && isFresh48(c.date, now)) return "#5aa8ff";
@@ -1162,29 +1163,27 @@ export function TnMap({
         const sx = (c.x - cur.x) * s + ox;
         const sy = (c.y - cur.y) * s + oy;
         if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) return;
-        if (!stamp(sx, sy, force)) return;
+        if (!stamp(sx, sy, force || overRace)) return;
         const geo = inferGeo(c);
         const fuzzy = isImprecise(geo);
         const hom = isHomicide(c.type);
-        const r = hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35;
+        const r = (hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35) * (overRace ? 1.35 : 1);
         const col = pinColor(c);
         ctx.beginPath();
         ctx.arc(sx, sy, fuzzy ? r + 1.1 : r, 0, Math.PI * 2);
         if (fuzzy) {
           ctx.strokeStyle = col;
           ctx.lineWidth = 1.15;
-          ctx.globalAlpha = 0.85;
+          ctx.globalAlpha = 0.9;
           ctx.stroke();
         } else {
           ctx.fillStyle = col;
-          ctx.globalAlpha = 0.82;
+          ctx.globalAlpha = 0.92;
           ctx.fill();
-          if (hom || (kinds.h48 && isFresh48(c.date, now))) {
-            ctx.strokeStyle = "#ffd6d6";
-            ctx.lineWidth = 0.7;
-            ctx.globalAlpha = 0.9;
-            ctx.stroke();
-          }
+          ctx.strokeStyle = overRace ? "#e8f6ff" : hom || (kinds.h48 && isFresh48(c.date, now)) ? "#ffd6d6" : col;
+          ctx.lineWidth = overRace ? 0.9 : 0.7;
+          ctx.globalAlpha = overRace ? 0.85 : 0.9;
+          ctx.stroke();
         }
         if (record) {
           hits.current.push({
@@ -1220,14 +1219,14 @@ export function TnMap({
           const rr = Math.min(16, 7 + Math.log2(g.n) * 2.2);
           ctx.beginPath();
           ctx.fillStyle = fill;
-          ctx.strokeStyle = fill;
-          ctx.lineWidth = 1.1;
-          ctx.globalAlpha = 0.28;
+          ctx.strokeStyle = overRace ? "#e8f6ff" : fill;
+          ctx.lineWidth = overRace ? 1.2 : 1.1;
+          ctx.globalAlpha = overRace ? 0.7 : 0.28;
           ctx.arc(sx, sy, rr, 0, Math.PI * 2);
           ctx.fill();
-          ctx.globalAlpha = 0.7;
+          ctx.globalAlpha = overRace ? 0.95 : 0.7;
           ctx.stroke();
-          ctx.globalAlpha = 0.92;
+          ctx.globalAlpha = 0.95;
           ctx.fillStyle = "#e8f6ff";
           ctx.fillText(String(g.n), sx, sy + 0.5);
           if (record) {
@@ -2118,7 +2117,7 @@ export function TnMap({
             ref={canvasRef}
             data-overlay="dots"
             data-pts={`${crimePts.length},${alprPts.length},${camPts.length},${sorPts.length},${sitePts.length}`}
-            className="pointer-events-none absolute inset-0 z-[3] h-full w-full bg-transparent"
+            className="pointer-events-none absolute inset-0 z-[5] h-full w-full bg-transparent"
             aria-hidden
           />
           <div
