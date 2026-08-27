@@ -5,7 +5,7 @@ import roadsJson from "@/data/roads.json";
 import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
 import { isFresh48 } from "@/lib/crime-fresh";
-import { clusterXY } from "@/lib/crime-cluster";
+import { clusterByCounty, clusterXY } from "@/lib/crime-cluster";
 import {
   crimeLabel,
   inferGeo,
@@ -1149,9 +1149,10 @@ export function TnMap({
       const fitW = fitRef.current.w || cur.w;
       const ratio = fitW / Math.max(1, cur.w);
       const dense = isDenseCounty(selectedRef.current?.name);
-      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
-      const cell = !zoomedNow ? 22 : 5.8;
+      const stateZoom = FULL_VIEW.w / Math.max(1, cur.w);
       const overRace = showZipsRef.current;
+      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
+      const metro = new Set(["Shelby", "Davidson", "Hamilton", "Knox"]);
 
       const pinColor = (c: CrimePt) => {
         if (kinds.h48 && isFresh48(c.date, now)) return "#5aa8ff";
@@ -1167,21 +1168,23 @@ export function TnMap({
         const geo = inferGeo(c);
         const fuzzy = isImprecise(geo);
         const hom = isHomicide(c.type);
-        const r = (hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35) * (overRace ? 1.35 : 1);
+        const fresh = kinds.h48 && isFresh48(c.date, now);
+        let r = (hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35) * (overRace ? 1.35 : 1);
+        if (fresh && zoomedNow) r *= 1.55;
         const col = pinColor(c);
         ctx.beginPath();
         ctx.arc(sx, sy, fuzzy ? r + 1.1 : r, 0, Math.PI * 2);
         if (fuzzy) {
           ctx.strokeStyle = col;
-          ctx.lineWidth = 1.15;
+          ctx.lineWidth = fresh && zoomedNow ? 1.6 : 1.15;
           ctx.globalAlpha = 0.9;
           ctx.stroke();
         } else {
           ctx.fillStyle = col;
           ctx.globalAlpha = 0.92;
           ctx.fill();
-          ctx.strokeStyle = overRace ? "#e8f6ff" : hom || (kinds.h48 && isFresh48(c.date, now)) ? "#ffd6d6" : col;
-          ctx.lineWidth = overRace ? 0.9 : 0.7;
+          ctx.strokeStyle = overRace ? "#e8f6ff" : hom || fresh ? "#ffd6d6" : col;
+          ctx.lineWidth = overRace || (fresh && zoomedNow) ? 0.95 : 0.7;
           ctx.globalAlpha = overRace ? 0.85 : 0.9;
           ctx.stroke();
         }
@@ -1198,10 +1201,16 @@ export function TnMap({
       };
 
       if (wantCluster) {
-        const groups = clusterXY(plot, cell);
+        const groups = !zoomedNow
+          ? stateZoom < 1.18
+            ? clusterByCounty(plot, { minN: 8, restCell: 38, always: metro })
+            : stateZoom < 2.05
+              ? clusterXY(plot, 14)
+              : clusterXY(plot, 7)
+          : clusterXY(plot, 5.8);
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+        ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
         for (const g of groups) {
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
@@ -1216,15 +1225,15 @@ export function TnMap({
           const shtN = g.n - homN;
           const fill =
             kinds.h48 && freshN >= g.n / 2 ? "#5aa8ff" : homN >= shtN ? "#ff4d4d" : "#ffb347";
-          const rr = Math.min(16, 7 + Math.log2(g.n) * 2.2);
+          const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
           ctx.beginPath();
           ctx.fillStyle = fill;
           ctx.strokeStyle = overRace ? "#e8f6ff" : fill;
           ctx.lineWidth = overRace ? 1.2 : 1.1;
-          ctx.globalAlpha = overRace ? 0.7 : 0.28;
+          ctx.globalAlpha = overRace ? 0.7 : !zoomedNow && stateZoom < 1.18 ? 0.42 : 0.28;
           ctx.arc(sx, sy, rr, 0, Math.PI * 2);
           ctx.fill();
-          ctx.globalAlpha = overRace ? 0.95 : 0.7;
+          ctx.globalAlpha = overRace ? 0.95 : 0.78;
           ctx.stroke();
           ctx.globalAlpha = 0.95;
           ctx.fillStyle = "#e8f6ff";
@@ -1249,31 +1258,34 @@ export function TnMap({
     }
 
     if (dispatchOn && cad.length) {
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.95;
       ctx.fillStyle = "#8ec8e0";
-      ctx.strokeStyle = "#c5e6f2";
-      const groups = clusterXY(cad, zoomedNow ? 4 : 18);
+      ctx.strokeStyle = "#e8f6ff";
+      const groups = clusterXY(cad, zoomedNow ? 4 : 12);
       for (const g of groups) {
         const c0 = g.items[0];
         const sx = (g.x - cur.x) * s + ox;
         const sy = (g.y - cur.y) * s + oy;
         if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
         stamp(sx, sy, true);
-        const rr = g.n > 1 ? Math.min(12, 6 + g.n) : 3.2;
+        const rr = g.n > 1 ? Math.min(14, 7 + g.n) : zoomedNow ? 6.2 : 5.4;
         ctx.save();
         ctx.translate(sx, sy);
         ctx.rotate(Math.PI / 4);
         ctx.beginPath();
         ctx.rect(-rr, -rr, rr * 2, rr * 2);
         ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.85;
+        ctx.stroke();
         ctx.restore();
         if (record) {
           hits.current.push({
             title: "Dispatch",
-            lines: g.n > 1 ? [`${g.n} active calls`] : [c0.offense || "MNPD CAD", c0.address].filter(Boolean),
+            lines: g.n > 1 ? [`${g.n} Nashville CAD`] : [c0.offense || "MNPD CAD", c0.address].filter(Boolean),
             x: sx,
             y: sy,
-            r: rr + 8,
+            r: rr + 10,
             crime: g.n === 1 ? c0 : undefined,
             cluster: g.n > 1 ? { x: g.x, y: g.y, n: g.n } : undefined,
           });
@@ -2261,6 +2273,18 @@ export function TnMap({
         >
           <div>{(hoverFlight ?? hoverCrime)?.a}</div>
           {(hoverFlight ?? hoverCrime)?.b ? <div>{(hoverFlight ?? hoverCrime)?.b}</div> : null}
+        </div>
+      ) : layers.dispatch ? (
+        <div
+          className={cn(
+            "pointer-events-none absolute left-1/2 z-20 w-[min(92%,28rem)] -translate-x-1/2 px-2 text-center font-mono text-[10px] leading-tight tracking-wide text-steel uppercase",
+            feedHidden ? "bottom-10" : "bottom-1",
+          )}
+        >
+          <div>
+            Dispatch · Nashville CAD · {dispatch.length} live
+            {selected && selected.name !== "Davidson" ? " · statewide / Davidson to plot" : ""}
+          </div>
         </div>
       ) : null}
       {tip && !picked && !pickedCam && !pickedSor ? (

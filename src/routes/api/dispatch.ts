@@ -35,7 +35,7 @@ async function geocode(street: string, city: string) {
   q.searchParams.set("vintage", "Current_Current");
   q.searchParams.set("format", "json");
   try {
-    const res = await fetch(q, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(1400) });
+    const res = await fetch(q, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(1800) });
     if (!res.ok) {
       geoCache.set(key, null);
       return null;
@@ -51,6 +51,8 @@ async function geocode(street: string, city: string) {
   }
 }
 
+const NASH = { lat: 36.1627, lon: -86.7816 };
+
 async function pullCad(): Promise<CrimeIncident[]> {
   const q = new URL(CAD);
   q.searchParams.set("where", "1=1");
@@ -58,35 +60,36 @@ async function pullCad(): Promise<CrimeIncident[]> {
   q.searchParams.set("returnGeometry", "false");
   q.searchParams.set("resultRecordCount", "40");
   q.searchParams.set("f", "pjson");
-  const res = await fetch(q, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(1800) });
+  const res = await fetch(q, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(2500) });
   if (!res.ok) return [];
   const d = (await res.json()) as { features?: { attributes?: CadRow }[] };
   const rows = (d.features ?? []).map((f) => f.attributes).filter(Boolean) as CadRow[];
   const out: CrimeIncident[] = [];
   await Promise.all(
-    rows.slice(0, 24).map(async (a) => {
+    rows.slice(0, 24).map(async (a, i) => {
       const loc = String(a.Location ?? "").trim();
-      if (!loc) return;
       const rawCity = String(a.CityName ?? "Nashville").trim() || "Nashville";
-      const city = /nashville|east|north|south|west|bellevue|madison|antioch|donelson|hermitage|inglewood/i.test(rawCity)
+      const city = /nashville|east|north|south|west|bellevue|madison|antioch|donelson|hermitage|inglewood|berry hill|joelton|neelys|brentwood/i.test(
+        rawCity,
+      )
         ? "Nashville"
         : rawCity;
-      const xy = await geocode(loc, city);
-      if (!xy) return;
+      const xy = loc ? await geocode(loc, "Nashville") : null;
+      const pin = xy ?? { lat: NASH.lat + ((i % 5) - 2) * 0.012, lon: NASH.lon + (((i / 5) | 0) - 1) * 0.012 };
       out.push({
-        id: `CAD-${a.ObjectId ?? loc}`,
+        id: `CAD-${a.ObjectId ?? loc ?? i}`,
         date: a.CallReceivedTime ? ymd(a.CallReceivedTime) : ymd(Date.now()),
         city,
         county: "Davidson",
-        address: loc,
-        lat: xy.lat,
-        lon: xy.lon,
+        address: loc || rawCity || "Nashville",
+        lat: pin.lat,
+        lon: pin.lon,
         type: "Dispatch",
         offense: String(a.IncidentTypeName ?? "Active dispatch"),
         source: "MNPD_CAD",
         killed: 0,
         injured: 0,
-        geo: "address",
+        geo: xy ? "address" : "city",
       });
     }),
   );
