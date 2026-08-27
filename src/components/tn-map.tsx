@@ -1343,7 +1343,7 @@ export function TnMap({
       }
     }
     ctx.globalAlpha = 1;
-    if (houseOn && districts.length) {
+    if (houseOnRef.current && districts.length) {
       ctx.save();
       ctx.strokeStyle = "#c9a45c";
       ctx.fillStyle = "#c9a45c";
@@ -1719,6 +1719,7 @@ export function TnMap({
     stealClick.current = true;
     setTip(null);
     setHoverCrime(null);
+    setHoverHouse(null);
     setPickedCam(null);
     setPickedSor(null);
     const c = h.crime;
