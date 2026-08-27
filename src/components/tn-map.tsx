@@ -1029,6 +1029,7 @@ export function TnMap({
     };
 
     if (zipOn && zipRows.length) {
+      ctx.globalAlpha = 1;
       const layersOn = raceLayersRef.current ?? { w: false, b: false, h: false, a: false, o: false };
       const fitW = fitRef.current.w || cur.w;
       const ratio = fitW / Math.max(1, cur.w);
@@ -1176,11 +1177,11 @@ export function TnMap({
       const fitW = fitRef.current.w || cur.w;
       const ratio = fitW / Math.max(1, cur.w);
       const dense = isDenseCounty(selectedRef.current?.name);
-      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
+      const wantCluster = !zoomedNow || (!showZipsRef.current && dense && ratio < 2.2);
       const cell = !zoomedNow ? 22 : 5.8;
 
       const pinColor = (c: CrimePt) => {
-        if (kinds.h48 && isFresh48(c.date, now)) return "#c45cff";
+        if (kinds.h48 && isFresh48(c.date, now)) return "#5aa8ff";
         if (isHomicide(c.type)) return "#ff4d4d";
         return "#ffb347";
       };
@@ -1229,7 +1230,7 @@ export function TnMap({
         const groups = clusterXY(plot, cell);
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = "600 10px 'IBM Plex Mono', ui-monospace, monospace";
+        ctx.font = "600 9px 'IBM Plex Mono', ui-monospace, monospace";
         for (const g of groups) {
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
@@ -1241,20 +1242,26 @@ export function TnMap({
           if (!stamp(sx, sy, true)) continue;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
           const freshN = g.items.filter((it) => kinds.h48 && isFresh48(it.date, now)).length;
-          const fill = freshN === g.n ? "#c45cff" : homN === g.n ? "#ff4d4d" : homN ? "#ff7a4d" : "#ffb347";
+          const shtN = g.n - homN;
+          const fill =
+            kinds.h48 && freshN >= g.n / 2 ? "#5aa8ff" : homN >= shtN ? "#ff4d4d" : "#ffb347";
           const rr = Math.min(16, 7 + Math.log2(g.n) * 2.2);
           ctx.beginPath();
           ctx.fillStyle = fill;
-          ctx.globalAlpha = 0.88;
+          ctx.strokeStyle = fill;
+          ctx.lineWidth = 1.1;
+          ctx.globalAlpha = 0.28;
           ctx.arc(sx, sy, rr, 0, Math.PI * 2);
           ctx.fill();
-          ctx.globalAlpha = 0.95;
-          ctx.fillStyle = "#020308";
+          ctx.globalAlpha = 0.7;
+          ctx.stroke();
+          ctx.globalAlpha = 0.92;
+          ctx.fillStyle = "#e8f6ff";
           ctx.fillText(String(g.n), sx, sy + 0.5);
           if (record) {
             hits.current.push({
               title: `${g.n} incidents`,
-              lines: [`${homN} hom · ${g.n - homN} sht`],
+              lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
               r: rr + 8,
@@ -1262,6 +1269,7 @@ export function TnMap({
             });
           }
         }
+        ctx.globalAlpha = 1;
       } else {
         for (const c of plot) drawPin(c, true);
       }
@@ -1851,14 +1859,6 @@ export function TnMap({
           setHoverFlight(flightHud(h.flight));
           return;
         }
-        if (h?.cluster) {
-          setTip(null);
-          setHoverFlight(null);
-          setHoverHouse(null);
-          applyZipHud(null);
-          setHoverCrime({ a: h.title, b: h.lines[0] ?? "Zoom in" });
-          return;
-        }
         if (h?.crime) {
           setTip(null);
           setHoverFlight(null);
@@ -1867,16 +1867,26 @@ export function TnMap({
           setHoverCrime(crimeHud(h.crime));
           return;
         }
-        setHoverCrime(null);
-        setHoverFlight(null);
         const zipHit = zipAt(e.clientX, e.clientY);
         if (zipHit) {
           setTip(null);
+          setHoverCrime(null);
+          setHoverFlight(null);
           setHoverHouse(null);
           const layersOn = raceLayersRef.current ?? { w: false, b: false, h: false, a: false, o: false };
           applyZipHud(zipHud(zipHit.z, layersOn));
           return;
         }
+        if (h?.cluster) {
+          setTip(null);
+          setHoverFlight(null);
+          setHoverHouse(null);
+          applyZipHud(null);
+          setHoverCrime({ a: h.title, b: h.lines[0] ?? "Zoom in" });
+          return;
+        }
+        setHoverCrime(null);
+        setHoverFlight(null);
         applyZipHud(null);
         const hd = houseAt(e.clientX, e.clientY);
         if (hd) {

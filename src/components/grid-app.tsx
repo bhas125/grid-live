@@ -102,7 +102,7 @@ export function GridApp() {
   const [crime, setCrime] = useState<CrimeIncident[]>([]);
   const [crimeLayers, setCrimeLayers] = useState<CrimeLayers>(DEFAULT_CRIME);
   const [crimeAgency, setCrimeAgency] = useState<CrimeAgencies>(DEFAULT_AGENCY);
-  const [crimeWindow, setCrimeWindow] = useState<CrimeWindow>("30d");
+  const [crimeWindow, setCrimeWindow] = useState<CrimeWindow>("ytd");
   const [feedSize, setFeedSize] = useState<FeedSize>("dock");
   const [layersOpen, setLayersOpen] = useState(true);
   const [pin, setPin] = useState<MapPin | null>(null);
@@ -380,7 +380,7 @@ export function GridApp() {
 
   function handleTab(t: TabId) {
     if (t === "crime") {
-      setCrimeLayers(DEFAULT_CRIME);
+      setCrimeWindow("ytd");
       setLayers((prev) => ({
         ...prev,
         crime: true,
@@ -435,7 +435,10 @@ export function GridApp() {
       setPickedZip(null);
       setZipFocus(null);
     }
-    if (id === "crime" && !layers.crime) setTab("crime");
+    if (id === "crime" && !layers.crime) {
+      setTab("crime");
+      setCrimeWindow("ytd");
+    }
     setLayers((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
