@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang=en>
+<meta charset=utf-8>
+<meta name=viewport content="initial-scale=1, minimum-scale=1, width=device-width">
+<title>Error 404 (Not Found)!!1</title>
+<style>
+*{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(https://www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}
+#logo-wrap{position:relative;display:inline-block;line-height:0}
+#o-hit{position:absolute;left:64px;top:20px;width:9px;height:9px;margin:0;padding:0;border:0;background:transparent;cursor:default;appearance:none;-webkit-appearance:none;outline:none}
+#portal{display:none;position:fixed;inset:0;background:#fff;z-index:9}
+#portal.on{display:block}
+.card{width:min(396px,calc(100% - 32px));margin:80px auto 0;padding:48px 40px 36px;border:1px solid #dadce0;border-radius:8px;box-sizing:border-box;font:14px/1.4 arial,sans-serif;color:#202124}
+.card h1{font:24px/1.3333 arial,sans-serif;font-weight:400;margin:16px 0 0}
+.card .sub{color:#5f6368;margin:8px 0 32px}
+.card label{display:block;color:#5f6368;font-size:11px;margin-bottom:6px}
+.card input{width:100%;box-sizing:border-box;height:52px;padding:13px 15px;border:1px solid #dadce0;border-radius:4px;font:16px arial,sans-serif;outline:none}
+.card input:focus{border-color:#1a73e8;caret-color:#1a73e8}
+.card .err{color:#d93025;font-size:12px;min-height:16px;margin:8px 0 0}
+.card .row{display:flex;justify-content:flex-end;margin-top:32px}
+.card button{background:#1a73e8;color:#fff;border:0;border-radius:4px;height:36px;padding:0 24px;font:500 14px arial,sans-serif;cursor:pointer}
+.card button:hover{background:#174ea6}
+.mini{display:block;height:40px;width:99px;background:url(https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_74x24dp.png) no-repeat;background-size:99px 32px}
+</style>
+<body>
+<a href="//www.google.com/" id="logo-wrap"><span id="logo" aria-label="Google"></span><i id="o-hit"></i></a>
+<p><b>404.</b> <ins>That’s an error.</ins>
+<p>The requested URL <code id="path">/</code> was not found on this server.  <ins>That’s all we know.</ins>
+<div id="portal">
+  <form class="card" id="form" autocomplete="off">
+    <span class="mini" aria-label="Google"></span>
+    <h1>Sign in</h1>
+    <p class="sub">to continue</p>
+    <label for="pw">Password</label>
+    <input id="pw" name="pw" type="password" autofocus>
+    <div class="err" id="err"></div>
+    <div class="row"><button type="submit">Next</button></div>
+  </form>
+</div>
+<script>
+(function () {
+  try { localStorage.removeItem("bh_ok"); sessionStorage.removeItem("bh_ok"); } catch (e) {}
+  function unlock() {
+    try { window.parent.postMessage({ bh: 1 }, location.origin); } catch (e) {}
+  }
+  function hash(s) {
+    var h = 0, i;
+    for (i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
+    return h >>> 0;
+  }
+  document.getElementById("path").textContent = location.pathname || "/";
+  document.getElementById("o-hit").addEventListener("click", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    document.getElementById("portal").className = "on";
+    setTimeout(function () { document.getElementById("pw").focus(); }, 0);
+  });
+  document.getElementById("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = document.getElementById("pw").value || "";
+    if (hash(v) === 3236740001) unlock();
+    else {
+      document.getElementById("err").textContent = "Wrong password. Try again.";
+      document.getElementById("pw").value = "";
+      document.getElementById("pw").focus();
+    }
+  });
+})();
+</script>
