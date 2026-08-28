@@ -1212,9 +1212,11 @@ export function TnMap({
         ctx.textBaseline = "middle";
         ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
         const stateWide = !zoomedNow && stateZoom < 1.18;
-        const rMax = 28;
+        const countyClick = zoomedNow;
+        const scaleBubbles = stateWide || countyClick;
+        const rMax = stateWide ? 28 : 16;
         let nMax = 1;
-        if (stateWide) {
+        if (scaleBubbles) {
           for (const g of groups) if (g.n > nMax) nMax = g.n;
         }
         for (const g of groups) {
@@ -1231,7 +1233,7 @@ export function TnMap({
           const shtN = g.n - homN;
           const fill =
             kinds.h48 && freshN >= g.n / 2 ? "#5aa8ff" : homN >= shtN ? "#ff4d4d" : "#ffb347";
-          const rr = stateWide
+          const rr = scaleBubbles
             ? Math.max(10, Math.min(rMax, rMax * Math.sqrt(g.n / nMax)))
             : Math.min(16, 7 + Math.log2(g.n) * 2.2);
           ctx.beginPath();
@@ -1252,7 +1254,7 @@ export function TnMap({
               lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
-              r: stateWide ? Math.max(rr + 8, 22) : rr + 8,
+              r: scaleBubbles ? Math.max(rr + 8, 22) : rr + 8,
               cluster: { x: g.x, y: g.y, n: g.n },
             });
           }
