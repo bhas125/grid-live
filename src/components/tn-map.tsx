@@ -1211,6 +1211,12 @@ export function TnMap({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+        const stateWide = !zoomedNow && stateZoom < 1.18;
+        const rMax = 28;
+        let nMax = 1;
+        if (stateWide) {
+          for (const g of groups) if (g.n > nMax) nMax = g.n;
+        }
         for (const g of groups) {
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
@@ -1225,7 +1231,9 @@ export function TnMap({
           const shtN = g.n - homN;
           const fill =
             kinds.h48 && freshN >= g.n / 2 ? "#5aa8ff" : homN >= shtN ? "#ff4d4d" : "#ffb347";
-          const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
+          const rr = stateWide
+            ? Math.max(10, Math.min(rMax, rMax * Math.sqrt(g.n / nMax)))
+            : Math.min(16, 7 + Math.log2(g.n) * 2.2);
           ctx.beginPath();
           ctx.fillStyle = fill;
           ctx.strokeStyle = overRace ? "#e8f6ff" : fill;
@@ -1244,7 +1252,7 @@ export function TnMap({
               lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
-              r: rr + 8,
+              r: stateWide ? Math.max(rr + 8, 22) : rr + 8,
               cluster: { x: g.x, y: g.y, n: g.n },
             });
           }
