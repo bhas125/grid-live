@@ -72,7 +72,7 @@ export function tilesForView(
       const p1 = project(tileLon(x + 1, z), tileLat(y + 1, z));
       out.push({
         key: `${z}/${x}/${y}`,
-        url: `https://basemaps.cartocdn.com/dark_all/${z}/${x}/${y}@2x.png`,
+        url: `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/${z}/${y}/${x}`,
         x: (p0.x - view.x) * s + ox,
         y: (p0.y - view.y) * s + oy,
         w: (p1.x - p0.x) * s,
