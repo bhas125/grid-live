@@ -148,7 +148,9 @@ export function GridApp() {
     let live = true;
     const mergeLive = (next: CrimeIncident[]) => {
       if (!live) return;
-      const rows = next.filter((r) => !isDispatch(r) && r.source !== "MNPD_CAD" && r.type !== "Dispatch");
+      const rows = next.filter(
+        (r) => !isDispatch(r) && r.source !== "MNPD_CAD" && r.type !== "Dispatch" && r.source !== "News",
+      );
       if (!rows.length) return;
       setCrime((prev) => {
         if (!prev.length) return rows;

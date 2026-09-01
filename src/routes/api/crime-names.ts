@@ -127,10 +127,7 @@ function fromHeadlines(id: string, titles: string[], href?: string, source?: str
     seen.add(k);
     charged.push(person(m[1], m[2] ? { age: Number(m[2]) } : undefined));
   }
-  if (!victims.length && !charged.length) {
-    if (href) return { id, victims: [], charged: [], note: titles[0], source, href };
-    return null;
-  }
+  if (!victims.length && !charged.length) return null;
   return { id, victims, charged, source, href };
 }
 
@@ -176,8 +173,7 @@ async function extractWithXai(
     parsed.charged = Array.isArray(parsed.charged) ? parsed.charged.filter((p) => p?.name) : [];
     parsed.href = parsed.href || headlines[0]?.href;
     parsed.source = parsed.source || headlines[0]?.source;
-    parsed.note = parsed.note || headlines[0]?.title;
-    if (!parsed.victims.length && !parsed.charged.length && !parsed.href) return null;
+    if (!parsed.victims.length && !parsed.charged.length) return null;
     return parsed;
   } catch {
     return fromHeadlines(id, headlines.map((h) => h.title), headlines[0]?.href, headlines[0]?.source);
@@ -222,16 +218,6 @@ export const Route = createFileRoute("/api/crime-names")({
             names = await extractWithXai(id, `${date} ${city} ${county} ${address}`, headlines, article);
           } else if (!names && headlines.length) {
             names = fromHeadlines(id, headlines.map((h) => h.title), headlines[0]?.href, headlines[0]?.source);
-          }
-          if (!names && headlines[0]) {
-            names = {
-              id,
-              victims: [],
-              charged: [],
-              note: headlines[0].title,
-              source: headlines[0].source,
-              href: headlines[0].href,
-            };
           }
           cache.set(id, { at: Date.now(), names });
           return Response.json({ names });

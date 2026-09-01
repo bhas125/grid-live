@@ -78,11 +78,27 @@ const overlayMem: {
   house: HouseDistrict[] | null;
 } = { alpr: null, cams: null, sor: null, house: null };
 
+function locationTitle(c: CrimeIncident) {
+  const a = (c.address || "").trim();
+  const place = [c.city, c.county ? `${c.county} County` : ""].filter(Boolean).join(" · ");
+  if (!a) return place || "Location unpublished";
+  if (/united states$/i.test(a) || /,\s*tennessee,\s*\d{5}/i.test(a) || a.split(",").length >= 4) {
+    return place || a.split(",")[0];
+  }
+  if (
+    a.length > 42 &&
+    !/\d/.test(a) &&
+    /killed|homicide|murder|shooting|shot|indicted|autopsy|deputies involved|confirms|health department/i.test(a)
+  ) {
+    return place || `${c.county} County`;
+  }
+  return a;
+}
+
 function storyHref(c: CrimeIncident, names?: CrimeNames | null) {
   if (c.href) return c.href;
-  if (names?.href) return names.href;
-  const q = `"${c.address}" ${c.county} County Tennessee ${c.date ?? ""}`.replace(/\s+/g, " ").trim();
-  return `https://news.google.com/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
+  if (names?.href && (names.victims.length || names.charged.length)) return names.href;
+  return null;
 }
 
 const TIP_W = 224;
@@ -1211,14 +1227,6 @@ export function TnMap({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
-        const stateWide = !zoomedNow && stateZoom < 1.18;
-        const countyClick = zoomedNow;
-        const scaleBubbles = stateWide || countyClick;
-        const rMax = stateWide ? 28 : 16;
-        let nMax = 1;
-        if (scaleBubbles) {
-          for (const g of groups) if (g.n > nMax) nMax = g.n;
-        }
         for (const g of groups) {
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
@@ -1233,9 +1241,7 @@ export function TnMap({
           const shtN = g.n - homN;
           const fill =
             kinds.h48 && freshN >= g.n / 2 ? "#5aa8ff" : homN >= shtN ? "#ff4d4d" : "#ffb347";
-          const rr = scaleBubbles
-            ? Math.max(10, Math.min(rMax, rMax * Math.sqrt(g.n / nMax)))
-            : Math.min(16, 7 + Math.log2(g.n) * 2.2);
+          const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
           ctx.beginPath();
           ctx.fillStyle = fill;
           ctx.strokeStyle = overRace ? "#e8f6ff" : fill;
@@ -1254,7 +1260,7 @@ export function TnMap({
               lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
-              r: scaleBubbles ? Math.max(rr + 8, 22) : rr + 8,
+              r: rr + 8,
               cluster: { x: g.x, y: g.y, n: g.n },
             });
           }
@@ -2324,20 +2330,38 @@ export function TnMap({
                 {isDispatch(picked.crime) ? "Dispatch" : crimeLabel(picked.crime.type)}
                 {picked.crime.source === "GVA" ? " · GVA Jun" : ""}
               </div>
-              <a
-                href={storyHref(picked.crime, picked.names)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-0.5 block text-sm font-medium leading-snug text-fg hover:text-grid hover:underline"
-              >
-                {picked.names?.note || picked.crime.address || `${picked.crime.city}, ${picked.crime.county} County`}
-              </a>
+              {(() => {
+                const href = storyHref(picked.crime, picked.names);
+                const title = locationTitle(picked.crime);
+                return href ? (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-0.5 block text-sm font-medium leading-snug text-fg hover:text-grid hover:underline"
+                  >
+                    {title}
+                  </a>
+                ) : (
+                  <div className="mt-0.5 text-sm font-medium leading-snug">{title}</div>
+                );
+              })()}
               <div className="mt-0.5 font-mono text-[10px] tracking-widest text-faint uppercase">
                 {fmtCrimeDate(picked.crime.date)}
                 {picked.crime.city ? ` · ${picked.crime.city}` : ""}
                 {picked.crime.zip ? ` · ${picked.crime.zip}` : ""}
                 {isImprecise(inferGeo(picked.crime)) ? ` · ${inferGeo(picked.crime)} pin` : ""}
               </div>
+              {storyHref(picked.crime, picked.names) ? (
+                <a
+                  href={storyHref(picked.crime, picked.names) ?? undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block font-mono text-[10px] tracking-widest text-grid uppercase hover:underline"
+                >
+                  Open story
+                </a>
+              ) : null}
             </div>
             <button
               type="button"

@@ -66,6 +66,7 @@ export async function readLiveCrime(since?: string): Promise<CrimeIncident[]> {
 }
 
 function prefer(old: CrimeIncident, next: CrimeIncident): CrimeIncident {
+  if (old.href && !next.href) return old;
   const nextHasStreet = /\d/.test(next.address || "");
   const oldHasStreet = /\d/.test(old.address || "");
   const address = nextHasStreet || !oldHasStreet ? next.address : old.address;

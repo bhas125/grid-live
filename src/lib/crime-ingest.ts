@@ -295,18 +295,11 @@ export async function fetchNewCrime(since?: string): Promise<CrimeIncident[]> {
       "Crime_ID,Offense_Datetime,Street_Address,ZIP_Code,Latitude,Longitude,UCR_Category,UCR_Description,UCR_Incident_Code,Full_Address,City",
       "Offense_Datetime DESC",
     ).then((rows) => rows.map((f) => fromMem(f.attributes)).filter((x): x is CrimeIncident => Boolean(x))),
-    fromNews(),
   ]);
   const rows: CrimeIncident[] = [];
   for (const j of jobs) {
     if (j.status === "fulfilled") rows.push(...j.value);
   }
   const pd = unique(rows.filter((r) => r.source !== "News"));
-  const seenDay = new Set(pd.filter((r) => r.type === "Homicide").map((r) => `${r.county}|${r.date}`));
-  for (const n of rows.filter((r) => r.source === "News")) {
-    if (n.type === "Homicide" && seenDay.has(`${n.county}|${n.date}`)) continue;
-    pd.push(n);
-    if (n.type === "Homicide") seenDay.add(`${n.county}|${n.date}`);
-  }
-  return unique(pd);
+  return pd;
 }
