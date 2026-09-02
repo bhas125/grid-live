@@ -20,6 +20,34 @@ const MEM =
 const NEWS_SKIP =
   /boston|dorchester|south station|probation|daycare|security deposit|penn state|louisville|kentucky|north carolina|struck by vehicle|traffic crash|car crash|cycling team|wreck on/i;
 
+function streetish(addr) {
+  const a = String(addr ?? "");
+  if (!a) return false;
+  if (/killed|homicide|murder|fatal|investigation underway|indict|grand jury|suspect captured|deputies on leave|still searching|officer-involved shooting|tbi identifies|tbi investigates/i.test(a) && !/\d/.test(a)) {
+    return false;
+  }
+  return /\d/.test(a) && /(street|st|avenue|ave|road|rd|drive|dr|lane|ln|blvd|highway|hwy|pike|way|circle|cir|court|ct|parkway|pkwy|place|pl|block|&|\/)/i.test(a);
+}
+
+function isHeadlineNews(r) {
+  if (!r || r.source !== "News") return false;
+  const prec = String(r.geocode_precision ?? "");
+  if (["address", "intersection", "block"].includes(prec)) return false;
+  return !streetish(r.address);
+}
+
+function nearbyBetterNews(existing, incoming) {
+  const t = Date.parse(`${incoming.date}T12:00:00`);
+  return existing.some((r) => {
+    if (r.source !== "News") return false;
+    if (String(r.county ?? "") !== incoming.county) return false;
+    if (r.type !== incoming.type) return false;
+    const d = Date.parse(`${r.date}T12:00:00`);
+    if (!Number.isFinite(t) || !Number.isFinite(d) || Math.abs(d - t) > 86400000 * 2.5) return false;
+    return !isHeadlineNews(r);
+  });
+}
+
 function loadCentroids() {
   const src = fs.readFileSync(path.join(root, "src/lib/county-xy.ts"), "utf8");
   const start = src.indexOf("export const COUNTY_XY");
@@ -322,6 +350,7 @@ async function main() {
   let recoded = 0;
   for (const r of existing) {
     if (r.source !== "News") continue;
+    if (!isHeadlineNews(r)) continue;
     const kind = newsKind(`${r.offense ?? ""} ${r.address ?? ""}`);
     if (staleNews(r.address ?? "")) {
       r.date = "2025-12-31";
@@ -348,6 +377,7 @@ async function main() {
     if (have.has(r.id)) continue;
     if (r.source === "News" && r.type === "Homicide" && homDay.has(`${r.county}|${r.date}`)) continue;
     if (r.source === "News" && newsDay.has(`${r.county}|${r.date}|${r.type}`)) continue;
+    if (r.source === "News" && isHeadlineNews(r) && nearbyBetterNews(existing, r)) continue;
     have.add(r.id);
     if (r.type === "Homicide") homDay.add(`${r.county}|${r.date}`);
     if (r.source === "News") newsDay.add(`${r.county}|${r.date}|${r.type}`);
