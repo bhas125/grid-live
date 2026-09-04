@@ -39,6 +39,16 @@ export function isDispatch(c: CrimeIncident) {
   return c.source === "MNPD_CAD" || c.type === "Dispatch";
 }
 
+/**
+ * Unconfirmed CAD lead: a scanner/dispatch line with no PD or news confirmation.
+ * Never counts as a confirmed incident; renders only under the Lead toggle.
+ */
+export function isLead(c: CrimeIncident) {
+  if (isDispatch(c)) return false;
+  if (c.confirmed === false) return true;
+  return String(c.id ?? "").startsWith("CAD-");
+}
+
 export function isHomicide(type: string) {
   return type === "Homicide";
 }
@@ -88,6 +98,7 @@ export function filterCrime(
 ) {
   return rows.filter((c) => {
     if (isDispatch(c)) return false;
+    if (isLead(c)) return false;
     if (!opts.agency[agencyOf(c)]) return false;
     if (c.source === "GVA" && !opts.includeGva) return false;
     return inCrimeWindow(c.date, opts.window);

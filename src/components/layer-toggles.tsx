@@ -14,6 +14,9 @@ import type {
 } from "@/data/types";
 import { AGENCY_META, CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
 
+const CRIME_TYPE_META = CRIME_META.filter((item) => item.id !== "h48");
+const H48_META = CRIME_META.find((item) => item.id === "h48")!;
+
 const ITEMS: { id: LayerId; label: string }[] = [
   { id: "interstates", label: "Roads" },
   { id: "weather", label: "Weather" },
@@ -102,7 +105,7 @@ export function LayerToggles({
       {layers.crime && crimeOpen ? (
         <>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-            {CRIME_META.map((item) => {
+            {CRIME_TYPE_META.map((item) => {
               const on = crimeLayers[item.id];
               return (
                 <button
@@ -121,6 +124,19 @@ export function LayerToggles({
             })}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onToggleCrime("h48")}
+              aria-pressed={crimeLayers.h48}
+              className={cn(
+                "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                crimeLayers.h48
+                  ? H48_META.chip
+                  : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+              )}
+            >
+              {H48_META.label}
+            </button>
             {WINDOW_META.map((item) => {
               const on = crimeWindow === item.id;
               return (

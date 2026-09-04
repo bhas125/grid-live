@@ -135,7 +135,7 @@ export type LayerId =
 
 export type Layers = Record<LayerId, boolean>;
 
-export type CrimeKind = "hom" | "sht" | "h48" | "reg";
+export type CrimeKind = "hom" | "sht" | "h48" | "reg" | "cad";
 export type CrimeLayers = Record<CrimeKind, boolean>;
 
 export const CRIME_META: { id: CrimeKind; label: string; chip: string }[] = [
@@ -143,6 +143,7 @@ export const CRIME_META: { id: CrimeKind; label: string; chip: string }[] = [
   { id: "sht", label: "Sht", chip: "border-watch bg-watch/15 text-watch" },
   { id: "h48", label: "48 Hours", chip: "border-fresh bg-fresh/15 text-fresh" },
   { id: "reg", label: "Registry", chip: "border-steel bg-steel/15 text-steel" },
+  { id: "cad", label: "Lead", chip: "border-lead bg-lead/15 text-lead" },
 ];
 
 export type CrimeAgency = "mem" | "nash" | "cha" | "rest";
@@ -282,6 +283,8 @@ export type CrimeIncident = {
   injured: number;
   geo?: GeoPrecision;
   href?: string;
+  /** false = unconfirmed CAD/dispatch lead, not a confirmed incident. */
+  confirmed?: boolean;
 };
 
 export type Flight = {

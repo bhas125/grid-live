@@ -13,6 +13,7 @@ import {
   isDispatch,
   isHomicide,
   isImprecise,
+  isLead,
   isShooting,
 } from "@/lib/crime-window";
 import type {
@@ -291,7 +292,7 @@ function crimeHud(c: CrimeIncident) {
   const where = c.address || [c.city, c.county ? `${c.county} County` : ""].filter(Boolean).join(", ");
   const zip = crimeZip(c);
   const geo = inferGeo(c);
-  const tag = isDispatch(c) ? "Dispatch" : crimeLabel(c.type);
+  const tag = isDispatch(c) ? "Dispatch" : isLead(c) ? "Lead (unconfirmed)" : crimeLabel(c.type);
   const fuzzy = isImprecise(geo) ? geo : "";
   return {
     a: `${tag}${when ? ` · ${when}` : ""}${fuzzy ? ` · ${fuzzy}` : ""}`,
@@ -751,6 +752,7 @@ export function TnMap({
         if (/\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t)) return false;
       }
       if (selected && c.county !== selected.name) return false;
+      if (isLead(c)) return crimeLayers.cad && isFresh48(c.date);
       const k = kindOf(c.type);
       if (!k) return false;
       const fresh = isFresh48(c.date);
@@ -1141,8 +1143,13 @@ export function TnMap({
       const kinds = crimeKindRef.current;
       const now = Date.now();
       const plot: CrimePt[] = [];
+      const leads: CrimePt[] = [];
       for (const c of pts) {
         if (isDispatch(c)) continue;
+        if (isLead(c)) {
+          if (kinds.cad && isFresh48(c.date, now)) leads.push(c);
+          continue;
+        }
         if (kinds.h48 && isFresh48(c.date, now)) {
           plot.push(c);
           continue;
@@ -1268,6 +1275,36 @@ export function TnMap({
         ctx.globalAlpha = 1;
       } else {
         for (const c of plot) drawPin(c, true);
+      }
+
+      if (leads.length) {
+        ctx.globalAlpha = 1;
+        for (const c of leads) {
+          const sx = (c.x - cur.x) * s + ox;
+          const sy = (c.y - cur.y) * s + oy;
+          if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
+          if (!stamp(sx, sy, true)) continue;
+          const rr = zoomedNow ? 4.6 : 3.6;
+          ctx.beginPath();
+          ctx.setLineDash([2.2, 1.8]);
+          ctx.strokeStyle = "#b98cff";
+          ctx.lineWidth = 1.25;
+          ctx.globalAlpha = 0.95;
+          ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (record) {
+            hits.current.push({
+              title: "Lead (unconfirmed)",
+              lines: crimeTipLines(c),
+              x: sx,
+              y: sy,
+              r: rr + 10,
+              crime: c,
+            });
+          }
+        }
+        ctx.globalAlpha = 1;
       }
 
       if (clipD) ctx.restore();

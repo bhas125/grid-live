@@ -26,6 +26,7 @@
   --color-race-white: #f4f4f2;
   --color-race-gray: #84888e;
   --color-race-black: #0a0b0d;
+  --color-lead: #b98cff;
 }
 
 @layer base {
