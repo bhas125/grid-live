@@ -236,13 +236,12 @@ function CrimeFeed({
     const rows = county ? incidents.filter((i) => i.county === county.name) : incidents;
     return rows.filter((i) => {
       if (!is2026(i) || staleStory(i)) return false;
-      if (crimeLayers.h48 && !isFresh48(i.date)) return false;
       return true;
     });
-  }, [incidents, county, crimeLayers.h48]);
+  }, [incidents, county]);
 
-  const homOn = crimeLayers.hom || (crimeLayers.h48 && !crimeLayers.hom && !crimeLayers.sht);
-  const shtOn = crimeLayers.sht || (crimeLayers.h48 && !crimeLayers.hom && !crimeLayers.sht);
+  const homOn = crimeLayers.hom;
+  const shtOn = crimeLayers.sht;
 
   const homList = useMemo(() => {
     if (!homOn) return [] as CrimeIncident[];
@@ -263,7 +262,7 @@ function CrimeFeed({
   useEffect(() => {
     setShownHom(PAGE);
     setShownSht(PAGE);
-  }, [county?.name, incidents.length, crimeLayers.hom, crimeLayers.sht, crimeLayers.h48]);
+  }, [county?.name, incidents.length, crimeLayers.hom, crimeLayers.sht]);
 
   useEffect(() => {
     const el = sentinel.current;
@@ -288,11 +287,7 @@ function CrimeFeed({
         <Stat k="Sht" v={fmtNum(stats.sht)} />
       </div>
       <p className="px-4 pb-2 font-mono text-xs leading-relaxed tracking-wide text-muted">
-        {crimeLayers.h48 ? (
-          <span className="text-fresh">
-            Last 48 hours{county ? ` · ${county.name}` : ""} · purple on the map. Hom/Sht still plot older points if those chips are on.
-          </span>
-        ) : county ? (
+        {county ? (
           (intel?.crimeNote ?? `${county.name} · 2026 homicide / shooting points.`)
         ) : (
           "Latest 2026 homicides first, then shootings. MNPD, MPD, CPD, and statewide news."
@@ -854,13 +849,13 @@ export function FeedPanel({
         />
       </div>
       <div className={tab === "crime" ? "flex min-h-0 flex-1 flex-col overflow-y-auto" : "hidden"}>
-        {crimeLayers.hom || crimeLayers.sht || crimeLayers.h48 ? (
+        {crimeLayers.hom || crimeLayers.sht ? (
           <CrimeFeed county={county} incidents={crime} crimeLayers={crimeLayers} onPickCrime={onPickCrime} />
         ) : null}
         {crimeLayers.reg ? <SorFeed county={county} active={tab === "crime" && crimeLayers.reg} /> : null}
-        {!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.h48 && !crimeLayers.reg ? (
+        {!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.reg && !crimeLayers.cad ? (
           <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">
-            Turn on Hom, Sht, 48 Hours, or Registry
+            Turn on Hom, Sht, Lead, or Registry
           </p>
         ) : null}
       </div>

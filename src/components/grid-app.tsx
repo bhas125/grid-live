@@ -53,7 +53,7 @@ const DEFAULT_LAYERS: Layers = {
   dispatch: false,
 };
 
-const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, h48: false, reg: false, cad: false };
+const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, reg: false, cad: false };
 const DEFAULT_RACE: RaceLayers = { w: true, b: true, h: true, a: true, o: true };
 const DEFAULT_AGENCY: CrimeAgencies = { mem: true, nash: true, cha: true, rest: true };
 

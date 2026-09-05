@@ -1,4 +1,5 @@
 import type { CrimeAgency, CrimeIncident, CrimeWindow, GeoPrecision } from "@/data/types";
+import { isFresh48 } from "@/lib/crime-fresh";
 import { COUNTY_XY } from "@/lib/county-xy";
 
 const DENSE = new Set(["Shelby", "Davidson", "Hamilton", "Knox"]);
@@ -21,6 +22,7 @@ export function daysAgoYmd(n: number, ms = Date.now()) {
 
 export function inCrimeWindow(date: string | null | undefined, win: CrimeWindow, now = Date.now()) {
   if (!date) return false;
+  if (win === "48h") return isFresh48(date, now);
   const today = chicagoYmd(now);
   if (win === "today") return date === today;
   if (win === "ytd") return date.startsWith(today.slice(0, 4));
@@ -86,6 +88,7 @@ export function isImprecise(geo: GeoPrecision) {
 }
 
 export function windowLabel(win: CrimeWindow) {
+  if (win === "48h") return "last 48 hours";
   if (win === "today") return "today";
   if (win === "7d") return "last 7 days";
   if (win === "30d") return "last 30 days";

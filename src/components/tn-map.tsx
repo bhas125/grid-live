@@ -755,8 +755,6 @@ export function TnMap({
       if (isLead(c)) return crimeLayers.cad && isFresh48(c.date);
       const k = kindOf(c.type);
       if (!k) return false;
-      const fresh = isFresh48(c.date);
-      if (crimeLayers.h48 && fresh) return true;
       if (k === "hom") return crimeLayers.hom;
       if (k === "sht") return crimeLayers.sht;
       return false;
@@ -1150,10 +1148,6 @@ export function TnMap({
           if (kinds.cad && isFresh48(c.date, now)) leads.push(c);
           continue;
         }
-        if (kinds.h48 && isFresh48(c.date, now)) {
-          plot.push(c);
-          continue;
-        }
         const k = kindOf(c.type);
         if (k === "hom" && kinds.hom) plot.push(c);
         else if (k === "sht" && kinds.sht) plot.push(c);
@@ -1178,7 +1172,6 @@ export function TnMap({
       const metro = new Set(["Shelby", "Davidson", "Hamilton", "Knox"]);
 
       const pinColor = (c: CrimePt) => {
-        if (kinds.h48 && isFresh48(c.date, now)) return "#5aa8ff";
         if (isHomicide(c.type)) return "#ff4d4d";
         return "#ffb347";
       };
@@ -1191,23 +1184,21 @@ export function TnMap({
         const geo = inferGeo(c);
         const fuzzy = isImprecise(geo);
         const hom = isHomicide(c.type);
-        const fresh = kinds.h48 && isFresh48(c.date, now);
         let r = (hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35) * (overRace ? 1.35 : 1);
-        if (fresh && zoomedNow) r *= 1.55;
         const col = pinColor(c);
         ctx.beginPath();
         ctx.arc(sx, sy, fuzzy ? r + 1.1 : r, 0, Math.PI * 2);
         if (fuzzy) {
           ctx.strokeStyle = col;
-          ctx.lineWidth = fresh && zoomedNow ? 1.6 : 1.15;
+          ctx.lineWidth = 1.15;
           ctx.globalAlpha = 0.9;
           ctx.stroke();
         } else {
           ctx.fillStyle = col;
           ctx.globalAlpha = 0.92;
           ctx.fill();
-          ctx.strokeStyle = overRace ? "#e8f6ff" : hom || fresh ? "#ffd6d6" : col;
-          ctx.lineWidth = overRace || (fresh && zoomedNow) ? 0.95 : 0.7;
+          ctx.strokeStyle = overRace ? "#e8f6ff" : hom ? "#ffd6d6" : col;
+          ctx.lineWidth = overRace ? 0.95 : 0.7;
           ctx.globalAlpha = overRace ? 0.85 : 0.9;
           ctx.stroke();
         }
@@ -1244,10 +1235,8 @@ export function TnMap({
           }
           if (!stamp(sx, sy, true)) continue;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
-          const freshN = g.items.filter((it) => kinds.h48 && isFresh48(it.date, now)).length;
           const shtN = g.n - homN;
-          const fill =
-            kinds.h48 && freshN >= g.n / 2 ? "#5aa8ff" : homN >= shtN ? "#ff4d4d" : "#ffb347";
+          const fill = homN >= shtN ? "#ff4d4d" : "#ffb347";
           const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
           ctx.beginPath();
           ctx.fillStyle = fill;
