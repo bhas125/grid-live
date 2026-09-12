@@ -47,8 +47,8 @@ export function isDispatch(c: CrimeIncident) {
  */
 export function isLead(c: CrimeIncident) {
   if (isDispatch(c)) return false;
-  if (c.confirmed === false) return true;
-  return String(c.id ?? "").startsWith("CAD-");
+  // Lead = unconfirmed only. A retired/news-confirmed CAD-* id must not stay Lead.
+  return c.confirmed === false;
 }
 
 export function isHomicide(type: string) {
@@ -97,13 +97,26 @@ export function windowLabel(win: CrimeWindow) {
 
 export function filterCrime(
   rows: CrimeIncident[],
-  opts: { window: CrimeWindow; agency: Record<CrimeAgency, boolean>; includeGva: boolean },
+  opts: {
+    window: CrimeWindow;
+    agency: Record<CrimeAgency, boolean>;
+    includeGva: boolean;
+    /** When true, keep fresh Lead rows (confirmed:false) so the map can draw them. */
+    includeLeads?: boolean;
+  },
 ) {
+  const now = Date.now();
   return rows.filter((c) => {
     if (isDispatch(c)) return false;
-    if (isLead(c)) return false;
+    if (isLead(c)) {
+      if (!opts.includeLeads) return false;
+      if (!isFresh48(c.date, now)) return false;
+      if (!opts.agency[agencyOf(c)]) return false;
+      return true;
+    }
     if (!opts.agency[agencyOf(c)]) return false;
     if (c.source === "GVA" && !opts.includeGva) return false;
     return inCrimeWindow(c.date, opts.window);
   });
 }
+
