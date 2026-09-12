@@ -428,8 +428,10 @@ export function GridApp() {
         window: crimeWindow,
         agency: crimeAgency,
         includeGva: crimeWindow === "ytd",
+        // Lead toggle: keep confirmed:false rows so TnMap can draw dashed Lead pins.
+        includeLeads: crimeLayers.cad,
       }),
-    [crime, crimeWindow, crimeAgency],
+    [crime, crimeWindow, crimeAgency, crimeLayers.cad],
   );
 
   function toggle(id: LayerId) {
@@ -645,3 +647,4 @@ export function GridApp() {
     </div>
   );
 }
+
