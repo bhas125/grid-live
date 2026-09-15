@@ -82,20 +82,6 @@
     "injured": 0
   },
   {
-    "id": "NEWS-2026-09-12-Davidson-H",
-    "date": "2026-09-12",
-    "city": "",
-    "county": "Davidson",
-    "address": "Mother charged with murder months after deadly dog mauling killed baby, grandfather in Ten",
-    "lat": 36.132,
-    "lon": -86.8,
-    "type": "Homicide",
-    "offense": "Homicide",
-    "source": "News",
-    "killed": 1,
-    "injured": 0
-  },
-  {
     "id": "NEWS-2026-09-12-Rutherford-S",
     "date": "2026-09-12",
     "city": "",
@@ -514,20 +500,6 @@
     "injured": 0
   },
   {
-    "id": "NEWS-2026-09-10-Hamilton-S",
-    "date": "2026-09-10",
-    "city": "",
-    "county": "Hamilton",
-    "address": "Chattanooga officer honored with Three Stars of Tennessee Award after shooting injury",
-    "lat": 35.125,
-    "lon": -85.205,
-    "type": "Shooting",
-    "offense": "Shooting",
-    "source": "News",
-    "killed": 0,
-    "injured": 0
-  },
-  {
     "id": "NEWS-2026-09-09-Shelby-E",
     "date": "2026-09-09",
     "city": "Memphis",
@@ -754,34 +726,6 @@
     "address": "Memphis man sentenced to life in prison for 2021 Covington, TN, homicide",
     "lat": 35.502,
     "lon": -89.737,
-    "type": "Homicide",
-    "offense": "Homicide",
-    "source": "News",
-    "killed": 1,
-    "injured": 0
-  },
-  {
-    "id": "NEWS-2026-09-09-Sequatchie-S",
-    "date": "2026-09-09",
-    "city": "",
-    "county": "Sequatchie",
-    "address": "TN 8;TN 111, Dunlap, Sequatchie County, Middle Tennessee, Tennessee, 37327, United States",
-    "lat": 35.3956381,
-    "lon": -85.3740853,
-    "type": "Shooting",
-    "offense": "Shooting",
-    "source": "News",
-    "killed": 0,
-    "injured": 0
-  },
-  {
-    "id": "NEWS-2026-09-09-Sequatchie-H",
-    "date": "2026-09-09",
-    "city": "",
-    "county": "Sequatchie",
-    "address": "Sequatchie County couple found dead in apparent murder-suicide",
-    "lat": 35.369,
-    "lon": -85.41,
     "type": "Homicide",
     "offense": "Homicide",
     "source": "News",
