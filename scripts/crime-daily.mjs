@@ -18,7 +18,16 @@ const MEM =
   "https://services2.arcgis.com/saWmpKJIUAjyyNVc/arcgis/rest/services/MPD_Public_Safety_Incidents_Mapping/FeatureServer/0/query";
 
 const NEWS_SKIP =
-  /boston|dorchester|south station|probation|daycare|security deposit|penn state|louisville|kentucky|north carolina|struck by vehicle|traffic crash|car crash|cycling team|wreck on/i;
+  /boston|dorchester|south station|probation|daycare|security deposit|penn state|louisville|kentucky|north carolina|struck by vehicle|traffic crash|car crash|cycling team|wreck on|three stars of tennessee|officer honored|dog mauling|charged with murder months after/i;
+
+/** Ids Crime Finder / Dev1 permanently dropped — GHA must not re-add from RSS. */
+const NEWS_DROP_IDS = new Set([
+  "NEWS-2026-09-12-Davidson-H",
+  "NEWS-2026-09-11-Davidson-H",
+  "NEWS-2026-09-10-Hamilton-S",
+  "NEWS-2026-09-09-Sequatchie-S",
+  "NEWS-2026-09-09-Sequatchie-H",
+]);
 
 function streetish(addr) {
   const a = String(addr ?? "");
@@ -347,6 +356,14 @@ async function main() {
     else console.error("source failed", j.reason);
   }
   const existing = JSON.parse(fs.readFileSync(file, "utf8"));
+  let dropped = 0;
+  for (let i = existing.length - 1; i >= 0; i--) {
+    const id = String(existing[i]?.id ?? "");
+    if (NEWS_DROP_IDS.has(id) || (id.startsWith("NEWS-") && NEWS_DROP_IDS.has(id))) {
+      existing.splice(i, 1);
+      dropped += 1;
+    }
+  }
   let recoded = 0;
   for (const r of existing) {
     if (r.source !== "News") continue;
@@ -374,6 +391,7 @@ async function main() {
   );
   const added = [];
   for (const r of fresh) {
+    if (NEWS_DROP_IDS.has(r.id)) continue;
     if (have.has(r.id)) continue;
     if (r.source === "News" && r.type === "Homicide" && homDay.has(`${r.county}|${r.date}`)) continue;
     if (r.source === "News" && newsDay.has(`${r.county}|${r.date}|${r.type}`)) continue;
@@ -384,7 +402,7 @@ async function main() {
     added.push(r);
     existing.push(r);
   }
-  if (added.length || recoded) {
+  if (added.length || recoded || dropped) {
     existing.sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
     fs.writeFileSync(file, JSON.stringify(existing));
   }
@@ -392,6 +410,7 @@ async function main() {
     JSON.stringify({
       added: added.length,
       recoded,
+      dropped,
       total: existing.length,
       hom: existing.filter((r) => r.type === "Homicide").length,
       ids: added.map((r) => r.id).slice(0, 30),
