@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, Layers as LayersIcon } from "lucide-react";
 import countiesJson from "@/data/counties.json";
 import type {
@@ -24,10 +24,12 @@ import type {
 } from "@/data/types";
 import { COUNTY_XY } from "@/lib/county-xy";
 import { centroid, countyFipsAt, geomLonLatBBox, nearestCountyName, type MapPin } from "@/lib/geo";
-import { filterCrime, isDispatch, windowLabel } from "@/lib/crime-window";
+import { countCrimeOps, filterCrime, isDispatch } from "@/lib/crime-window";
 import { prefetchNews } from "@/lib/news-cache";
-import { cn, fmtNum } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { AddressSearch } from "./address-search";
+import { CrimeOpsStrip } from "./crime-ops-strip";
+import { CrimeTips } from "./crime-tips";
 import { CrimeShare, FeedPanel } from "./feed-panel";
 import { LayerToggles } from "./layer-toggles";
 import { MarketTicker } from "./market-ticker";
@@ -113,7 +115,7 @@ export function GridApp() {
   const [zips, setZips] = useState<ZipRace[] | null>(null);
   const [pickedZip, setPickedZip] = useState<string | null>(null);
   const [zipFocus, setZipFocus] = useState<{ lon: number; lat: number } | null>(null);
-  const crimeLoaded = useRef(false);
+  const [crimeReady, setCrimeReady] = useState(false);
 
   useEffect(() => {
     fetch("/tn-counties.geojson")
@@ -144,6 +146,27 @@ export function GridApp() {
   }, []);
 
   useEffect(() => {
+    let live = true;
+    fetch("/crime-tn.json")
+      .then((r) => r.json())
+      .then((d: CrimeIncident[]) => {
+        if (!live) return;
+        const rows = (Array.isArray(d) ? d : []).filter(
+          (r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch",
+        );
+        setCrime(rows);
+        setCrimeReady(true);
+      })
+      .catch(() => {
+        if (!live) return;
+        setCrimeReady(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (tab !== "crime" && !layers.crime) return;
     let live = true;
     const mergeLive = (next: CrimeIncident[]) => {
@@ -164,19 +187,7 @@ export function GridApp() {
         }
         return added ? [...have.values()] : prev;
       });
-    };
-    const loadSnap = () => {
-      fetch("/crime-tn.json")
-        .then((r) => r.json())
-        .then((d: CrimeIncident[]) => {
-          if (!live) return;
-          crimeLoaded.current = true;
-          const rows = (Array.isArray(d) ? d : []).filter(
-            (r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch",
-          );
-          setCrime(rows);
-        })
-        .catch(() => undefined);
+      setCrimeReady(true);
     };
     const loadLive = () => {
       if (document.visibilityState === "hidden") return;
@@ -189,10 +200,6 @@ export function GridApp() {
         })
         .catch(() => undefined);
     };
-    if (!crimeLoaded.current) {
-      crimeLoaded.current = true;
-      loadSnap();
-    }
     const wait = window.setTimeout(loadLive, 900);
     const poll = window.setInterval(loadLive, 60 * 60_000);
     let waitR = 0;
@@ -422,6 +429,17 @@ export function GridApp() {
     setCrimeAgency((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
+  function isolateHom() {
+    setCrimeLayers((prev) => {
+      if (prev.hom && !prev.sht) return { ...prev, sht: true };
+      return { ...prev, hom: true, sht: false };
+    });
+  }
+
+  function allAgencies() {
+    setCrimeAgency({ mem: true, nash: true, cha: true, rest: true });
+  }
+
   const visibleCrime = useMemo(
     () =>
       filterCrime(crime, {
@@ -433,6 +451,8 @@ export function GridApp() {
       }),
     [crime, crimeWindow, crimeAgency, crimeLayers.cad],
   );
+
+  const crimeOps = useMemo(() => countCrimeOps(crime, crimeWindow), [crime, crimeWindow]);
 
   function toggle(id: LayerId) {
     if (id === "race" && layers.race) {
@@ -508,10 +528,15 @@ export function GridApp() {
           <p className="font-mono text-xs tracking-widest text-faint uppercase">
             {selected ? `${selected.seat} · ${selected.division}` : "Tennessee"}
           </p>
-          {crime.length ? (
-            <p className="font-mono text-xs tracking-widest text-faint uppercase">
-              {fmtNum(visibleCrime.length)} · {windowLabel(crimeWindow)}
-            </p>
+          {layers.crime ? (
+            <CrimeOpsStrip
+              hom={crimeOps.hom}
+              sht={crimeOps.sht}
+              lead={crimeOps.lead}
+              ready={crimeReady}
+              isolated={crimeLayers.hom && !crimeLayers.sht}
+              onIsolateHom={isolateHom}
+            />
           ) : null}
           <div className="relative mt-1 flex flex-col items-start">
             <AddressSearch pin={pin} onGo={goToPlace} onClear={clearPin} />
@@ -576,6 +601,8 @@ export function GridApp() {
             onToggleAgency={toggleAgency}
             crimeWindow={crimeWindow}
             onCrimeWindow={setCrimeWindow}
+            onIsolateHom={isolateHom}
+            onAllAgencies={allAgencies}
           />
         ) : null}
       </div>
@@ -604,7 +631,9 @@ export function GridApp() {
           onWarmZips={layers.race ? warmZips : undefined}
           focusZip={zipFocus}
           feedHidden={feedSize === "hidden"}
+          onBackToState={backToState}
         />
+        {layers.crime ? <CrimeTips /> : null}
         {feedSize === "hidden" ? (
           <button
             type="button"
@@ -635,6 +664,11 @@ export function GridApp() {
         crime={visibleCrime}
         crimeLayers={crimeLayers}
         onPickCrime={goToIncident}
+        crimeReady={crimeReady}
+        crimeWindow={crimeWindow}
+        onCrimeWindow={setCrimeWindow}
+        crimeAgency={crimeAgency}
+        onAllAgencies={allAgencies}
         electYear={electYear}
         onElectYear={handleElectYear}
         raceOn={layers.race}

@@ -120,3 +120,71 @@ export function filterCrime(
   });
 }
 
+function staleNewsStory(c: CrimeIncident) {
+  if (c.source !== "News") return false;
+  const t = `${c.address ?? ""} ${c.offense ?? ""}`;
+  return /\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t);
+}
+
+/** Statewide ops-strip totals. Type chips / county drill / agency filters do not apply. */
+export function countCrimeOps(rows: CrimeIncident[], win: CrimeWindow, now = Date.now()) {
+  let hom = 0;
+  let sht = 0;
+  let lead = 0;
+  for (const c of rows) {
+    if (isDispatch(c)) continue;
+    if (isLead(c)) {
+      if (isFresh48(c.date, now)) lead += 1;
+      continue;
+    }
+    if (!(c.date ?? "").startsWith("2026")) continue;
+    if (staleNewsStory(c)) continue;
+    if (c.source === "GVA" && win !== "ytd") continue;
+    if (!inCrimeWindow(c.date, win, now)) continue;
+    if (isHomicide(c.type)) hom += 1;
+    else if (isShooting(c.type)) sht += 1;
+  }
+  return { hom, sht, lead };
+}
+
+export function restOnlyAgencies(agency: Record<CrimeAgency, boolean>) {
+  return agency.rest && !agency.mem && !agency.nash && !agency.cha;
+}
+
+export function allAgenciesOn(agency: Record<CrimeAgency, boolean>) {
+  return agency.mem && agency.nash && agency.cha && agency.rest;
+}
+
+export type CrimeEmptyHint = {
+  line: string;
+  action?: "ytd" | "tn";
+  actionLabel?: string;
+};
+
+export function crimeEmptyHint(opts: {
+  window: CrimeWindow;
+  agency: Record<CrimeAgency, boolean>;
+  county: string | null;
+}): CrimeEmptyHint {
+  if (opts.window === "today") {
+    return {
+      line: "No incidents dated today (America/Chicago). TODAY is a calendar-day cut — try 48 Hours or YTD.",
+      action: "ytd",
+      actionLabel: "YTD",
+    };
+  }
+  if (restOnlyAgencies(opts.agency)) {
+    return {
+      line: "REST is outside Memphis, Nashville, and Chattanooga — none in this window. TN shows the statewide feeds.",
+      action: "tn",
+      actionLabel: "TN",
+    };
+  }
+  if (opts.county) {
+    return {
+      line: `No 2026 homicide / shooting points in ${opts.county} for this filter. Official city feeds cover Memphis, Nashville, and Chattanooga.`,
+    };
+  }
+  return { line: "No homicide / shooting points in this filter." };
+}
+
