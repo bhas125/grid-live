@@ -166,7 +166,7 @@ export function LayerToggles({
                     : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
                 )}
               >
-                TN
+                TN/ALL
               </button>
             ) : null}
             {AGENCY_META.map((item) => {
