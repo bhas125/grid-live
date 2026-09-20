@@ -8,19 +8,26 @@ function Sep() {
 }
 
 function Tape({
+  wxTemp,
   wxLabel,
   quotes,
   headlines,
 }: {
+  wxTemp?: number;
   wxLabel?: string;
   quotes: MarketQuote[];
   headlines: FinanceHeadline[];
 }) {
   return (
     <div className="flex items-center whitespace-nowrap">
-      {wxLabel ? (
+      {wxTemp != null || wxLabel ? (
         <>
-          <span className="font-mono text-[10px] tracking-widest text-faint uppercase">{wxLabel}</span>
+          {wxTemp != null ? (
+            <span className="font-display text-sm leading-none tabular">{wxTemp}°</span>
+          ) : null}
+          {wxLabel ? (
+            <span className="ml-1.5 font-mono text-[10px] tracking-widest text-faint uppercase">{wxLabel}</span>
+          ) : null}
           <Sep />
         </>
       ) : null}
@@ -62,7 +69,7 @@ function Tape({
   );
 }
 
-export function NewsTicker({ wxLabel }: { wxLabel?: string }) {
+export function NewsTicker({ wxTemp, wxLabel }: { wxTemp?: number; wxLabel?: string }) {
   const [quotes, setQuotes] = useState<MarketQuote[]>([]);
   const [headlines, setHeadlines] = useState<FinanceHeadline[]>([]);
 
@@ -105,19 +112,19 @@ export function NewsTicker({ wxLabel }: { wxLabel?: string }) {
     };
   }, []);
 
-  const ready = quotes.length || headlines.length || wxLabel;
+  const ready = quotes.length || headlines.length || wxLabel || wxTemp != null;
   if (!ready) {
     return <div className="h-6 w-full animate-pulse bg-elevated/80" />;
   }
 
-  const props = { wxLabel, quotes, headlines };
+  const props = { wxTemp, wxLabel, quotes, headlines };
 
   return (
     <div
       className="ticker-track border-b border-line bg-bg-2"
       role="marquee"
-      aria-label="Markets, U.S. debt, and finance headlines"
-      title="Markets, debt, and headlines — hover to pause"
+      aria-label="Airports, markets, U.S. debt, and headlines"
+      title="Airports, markets, debt, and headlines — hover to pause"
     >
       <div className="ticker-crawl">
         <Tape {...props} />

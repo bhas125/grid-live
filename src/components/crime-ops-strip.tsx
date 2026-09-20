@@ -79,7 +79,7 @@ export function CrimeOpsStrip({
         </span>
       )}
       <IsolateHomButton
-        isolated={layers.hom && !layers.sht}
+        isolated={!layers.sht}
         onToggle={onIsolateHom}
         className="ml-auto"
       />

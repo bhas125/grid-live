@@ -23,7 +23,7 @@ import type {
 } from "@/data/types";
 import { COUNTY_XY } from "@/lib/county-xy";
 import { centroid, countyFipsAt, geomLonLatBBox, nearestCountyName, type MapPin } from "@/lib/geo";
-import { crimeOpsCounts, loadCrimeSnapshot } from "@/lib/crime-ops";
+import { crimeOpsCounts, loadCrimeSnapshot, toggleHomIsolate } from "@/lib/crime-ops";
 import { filterCrime, isDispatch, windowLabel } from "@/lib/crime-window";
 import { prefetchNews } from "@/lib/news-cache";
 import { cn } from "@/lib/utils";
@@ -418,10 +418,7 @@ export function GridApp() {
   }
 
   function isolateHom() {
-    setCrimeLayers((prev) => {
-      if (prev.hom && !prev.sht) return { ...prev, sht: true };
-      return { ...prev, hom: true, sht: false };
-    });
+    setCrimeLayers(toggleHomIsolate);
   }
 
   const visibleCrime = useMemo(
@@ -491,9 +488,8 @@ export function GridApp() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-bg text-fg">
-      <NewsTicker wxLabel={wx?.label} />
+      <NewsTicker wxTemp={wx?.temp} wxLabel={wx?.label} />
       <header className="shrink-0 py-2 pr-2 pl-4 sm:pr-3 sm:pl-6">
-        <div className="flex items-center justify-between gap-3">
         <div>
           {selected ? (
             <div className="flex h-10 items-center gap-2">
@@ -542,14 +538,6 @@ export function GridApp() {
               <LayersIcon className="size-3.5" />
             </button>
           </div>
-        </div>
-        <div className="ml-auto shrink-0 text-right">
-          {wx ? (
-            <div className="font-display text-4xl leading-none tabular">{wx.temp}°</div>
-          ) : (
-            <div className="h-10 w-16 animate-pulse bg-elevated/80" />
-          )}
-        </div>
         </div>
       </header>
       <div className={layersOpen || feedSize === "open" ? "shrink-0 px-2 pb-1 sm:px-3" : "hidden"}>

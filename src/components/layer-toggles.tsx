@@ -117,7 +117,7 @@ export function LayerToggles({
               );
             })}
             {onIsolateHom ? (
-              <IsolateHomButton isolated={crimeLayers.hom && !crimeLayers.sht} onToggle={onIsolateHom} />
+              <IsolateHomButton isolated={!crimeLayers.sht} onToggle={onIsolateHom} />
             ) : null}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">

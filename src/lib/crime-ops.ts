@@ -1,4 +1,4 @@
-import type { CrimeAgencies, CrimeIncident, CrimeWindow } from "@/data/types";
+import type { CrimeAgencies, CrimeIncident, CrimeLayers, CrimeWindow } from "@/data/types";
 import { isFresh48 } from "@/lib/crime-fresh";
 import { agencyOf, inCrimeWindow, isDispatch, isHomicide, isLead, isShooting } from "@/lib/crime-window";
 
@@ -6,6 +6,12 @@ import { agencyOf, inCrimeWindow, isDispatch, isHomicide, isLead, isShooting } f
 export const LIVE_CRIME_URL = "https://grid.blastpad.app/crime-tn.json";
 
 export type CrimeOpsCounts = { hom: number; sht: number; lead: number };
+
+/** SHT on → isolate (HOM on, SHT off). SHT off → restore SHT. No extra layer flag. */
+export function toggleHomIsolate(layers: CrimeLayers): CrimeLayers {
+  if (layers.sht) return { ...layers, hom: true, sht: false };
+  return { ...layers, sht: true };
+}
 
 export function crimeOpsCounts(
   rows: CrimeIncident[],

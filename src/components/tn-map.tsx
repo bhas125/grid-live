@@ -9,7 +9,6 @@ import { clusterRadius, clusterXY, hexBin, hexScreenRadius } from "@/lib/crime-c
 import {
   crimeLabel,
   inferGeo,
-  isDenseCounty,
   isDispatch,
   isHomicide,
   isImprecise,
@@ -1244,12 +1243,13 @@ export function TnMap({
 
       const fitW = fitRef.current.w || cur.w;
       const ratio = fitW / Math.max(1, cur.w);
-      const dense = isDenseCounty(selectedRef.current?.name);
       const overRace = showZipsRef.current;
-      const hexView = !zoomedNow;
-      const compactView = zoomedNow && dense && ratio < 2.2;
+      const stateZoom = FULL_VIEW.w / Math.max(1, cur.w);
+      const hexView = !zoomedNow && stateZoom < 1.4;
+      const pinView = ratio >= 6;
+      const compactView = !hexView && !pinView;
       const wantCluster = hexView || compactView;
-      const detailRipple = zoomedNow && !compactView;
+      const detailRipple = pinView;
       const capR = rippleCap(w);
 
       const pinColor = (c: CrimePt) => {
@@ -1312,7 +1312,7 @@ export function TnMap({
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
           if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
-          if (g.n === 1) {
+          if (g.n === 1 && !hexView) {
             drawPin(g.items[0], true, detailRipple);
             continue;
           }
@@ -1376,6 +1376,12 @@ export function TnMap({
             continue;
           }
           const rr = clusterRadius(g.n, w, { rMin: 5, rMaxPx: 10, rMaxFrac: 0.02, nSoft: 48 });
+          const now = busy.current ? rippleFrozen.current : performance.now();
+          if (!busy.current) rippleFrozen.current = now;
+          const reduced = reduceMotion.current;
+          if (!reduced) clusterRipple = true;
+          if (shtN) drawClusterRipples(ctx, sx, sy, rr, "#ffb347", now, reduced, 0, Math.min(9, rr * 1.15));
+          if (homN) drawClusterRipples(ctx, sx, sy, rr, "#ff4d4d", now, reduced, shtN ? 0.33 : 0, Math.min(9, rr * 1.15));
           ctx.beginPath();
           ctx.fillStyle = "#0a0e14";
           ctx.globalAlpha = overRace ? 0.78 : 0.7;

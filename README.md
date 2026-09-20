@@ -16,12 +16,12 @@ Use the **Vercel Preview URL on the PR** — not production, not `grid.blastpad.
 
 Included in this preview:
 
-- Horizontal **news ticker / crawl at the very top** (wx metros, DJI/COMP, US Debt, finance headlines). Stacked right-side column removed so the map is taller.
-- Statewide **hexbin / H3-style** aggregation (compact cells, count + HOM/SHT dual fill / badge). No large circular Supercluster bubbles.
-- Ripples gated: none at state/hex; solid compact markers at first county zoom; Motion loading-ripple only at pin/county detail, max radius ~8px / 1.2% of map width.
+- Horizontal **news ticker / crawl at the very top** (temp + airports · DJI/COMP · US Debt · headlines). Right rail fully collapsed so the map is taller.
+- Statewide **hexbin / H3-style** aggregation (compact cells, count + HOM/SHT dual fill / badge) while `stateZoom < 1.4`.
+- Mid-zoom: compact markers + tiny pulse. Motion loading-ripple only near pin zoom (`intoFit ≥ 6`), hard-capped ~8px.
 - Persistent HOM / SHT / LEAD ops bar **under the map** (no flash of zeros on load)
 - First-run dismissible tips (localStorage)
-- **Isolate HOM** action (always visible on Crime; label stays “Isolate HOM”; **Show SHT** restores)
+- **Isolate HOM** action (always visible on Crime). SHT on → **Isolate HOM**; SHT off → pressed **Show SHT**. Stays visible if HOM is deselected.
 - Always-visible **STATE** when a county is drilled
 - Crime pin/cluster hits beat Roads; larger phone tap targets
 - TODAY empty-state one-liner
