@@ -126,13 +126,19 @@ function staleNewsStory(c: CrimeIncident) {
   return /\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t);
 }
 
-/** Statewide ops-strip totals. Type chips / county drill / agency filters do not apply. */
-export function countCrimeOps(rows: CrimeIncident[], win: CrimeWindow, now = Date.now()) {
+/** Ops-strip totals for the active time + agency filters (type chips stay a legend). */
+export function countCrimeOps(
+  rows: CrimeIncident[],
+  win: CrimeWindow,
+  agency?: Record<CrimeAgency, boolean>,
+  now = Date.now(),
+) {
   let hom = 0;
   let sht = 0;
   let lead = 0;
   for (const c of rows) {
     if (isDispatch(c)) continue;
+    if (agency && !agency[agencyOf(c)]) continue;
     if (isLead(c)) {
       if (isFresh48(c.date, now)) lead += 1;
       continue;
@@ -157,7 +163,7 @@ export function allAgenciesOn(agency: Record<CrimeAgency, boolean>) {
 
 export type CrimeEmptyHint = {
   line: string;
-  action?: "ytd" | "tn";
+  action?: "48h" | "all";
   actionLabel?: string;
 };
 
@@ -168,23 +174,23 @@ export function crimeEmptyHint(opts: {
 }): CrimeEmptyHint {
   if (opts.window === "today") {
     return {
-      line: "No incidents dated today (America/Chicago). TODAY is a calendar-day cut — try 48 Hours or YTD.",
-      action: "ytd",
-      actionLabel: "YTD",
+      line: "No incidents in TODAY · try 48H",
+      action: "48h",
+      actionLabel: "48H",
     };
   }
   if (restOnlyAgencies(opts.agency)) {
     return {
-      line: "REST is outside Memphis, Nashville, and Chattanooga — none in this window. TN shows the statewide feeds.",
-      action: "tn",
-      actionLabel: "TN",
+      line: "REST has no metro incidents in this window.",
+      action: "all",
+      actionLabel: "ALL",
     };
   }
   if (opts.county) {
     return {
-      line: `No 2026 homicide / shooting points in ${opts.county} for this filter. Official city feeds cover Memphis, Nashville, and Chattanooga.`,
+      line: `No incidents in ${opts.county} for this filter.`,
     };
   }
-  return { line: "No homicide / shooting points in this filter." };
+  return { line: "No incidents in this filter." };
 }
 

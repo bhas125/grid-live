@@ -444,6 +444,7 @@ export function TnMap({
   focusZip = null,
   feedHidden = false,
   onBackToState,
+  onClusterIntercept,
 }: {
   geo: GeoFeature[] | null;
   selected: County | null;
@@ -469,6 +470,7 @@ export function TnMap({
   focusZip?: { lon: number; lat: number } | null;
   feedHidden?: boolean;
   onBackToState?: () => void;
+  onClusterIntercept?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -487,6 +489,8 @@ export function TnMap({
     crime: CrimeIncident;
     names: CrimeNames | null | undefined;
   } | null>(null);
+  const pickedCrimeRef = useRef<string | null>(null);
+  pickedCrimeRef.current = picked?.crime.id ?? focusCrimeId;
   const [pickedCam, setPickedCam] = useState<TrafficCam | null>(null);
   const [pickedSor, setPickedSor] = useState<{ point: SorPoint; person: SorPerson | null | undefined } | null>(null);
   const [sor, setSor] = useState<SorPoint[]>([]);
@@ -1215,6 +1219,14 @@ export function TnMap({
             ctx.globalAlpha = 0.95;
             ctx.stroke();
           }
+          if (pickedCrimeRef.current === c.id) {
+            ctx.beginPath();
+            ctx.arc(sx, sy, r + 3.4, 0, Math.PI * 2);
+            ctx.strokeStyle = "#3de0ff";
+            ctx.lineWidth = 1.35;
+            ctx.globalAlpha = 0.95;
+            ctx.stroke();
+          }
         }
         if (record) {
           hits.current.push({
@@ -1250,50 +1262,46 @@ export function TnMap({
           if (!stamp(sx, sy, true)) continue;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
           const shtN = g.n - homN;
-          const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
+          let rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
+          if (homN) rr = Math.max(rr, !zoomedNow && stateZoom < 1.18 ? 12 : 8.5);
           const tau = Math.PI * 2;
           const start = -Math.PI / 2;
+          const ringW = homN && shtN ? 3.2 : 2.4;
           ctx.beginPath();
           ctx.arc(sx, sy, rr, 0, tau);
           ctx.fillStyle = "#0c121c";
-          ctx.globalAlpha = overRace ? 0.55 : 0.5;
+          ctx.globalAlpha = overRace ? 0.62 : 0.55;
           ctx.fill();
+          ctx.lineCap = "butt";
           if (shtN) {
             ctx.beginPath();
-            ctx.moveTo(sx, sy);
-            ctx.arc(sx, sy, rr, start, start + (shtN / g.n) * tau);
-            ctx.closePath();
-            ctx.fillStyle = "#ffb347";
-            ctx.globalAlpha = overRace ? 0.72 : !zoomedNow && stateZoom < 1.18 ? 0.55 : 0.48;
-            ctx.fill();
+            ctx.strokeStyle = "#ffb347";
+            ctx.lineWidth = ringW;
+            ctx.globalAlpha = 0.92;
+            ctx.arc(sx, sy, rr - ringW * 0.45, start, start + (shtN / g.n) * tau);
+            ctx.stroke();
           }
           if (homN) {
             const a0 = start + (shtN / g.n) * tau;
             ctx.beginPath();
-            ctx.moveTo(sx, sy);
-            ctx.arc(sx, sy, rr, a0, a0 + (homN / g.n) * tau);
-            ctx.closePath();
-            ctx.fillStyle = "#ff4d4d";
-            ctx.globalAlpha = overRace ? 0.88 : 0.82;
-            ctx.fill();
-          }
-          ctx.beginPath();
-          ctx.arc(sx, sy, rr, 0, tau);
-          ctx.strokeStyle = overRace ? "#e8f6ff" : homN ? "#ff4d4d" : "#ffb347";
-          ctx.lineWidth = homN && shtN ? 1.7 : overRace ? 1.2 : 1.1;
-          ctx.globalAlpha = overRace ? 0.95 : 0.9;
-          ctx.stroke();
-          if (homN && shtN) {
-            ctx.beginPath();
-            ctx.arc(sx, sy, Math.max(3, rr - 2.2), 0, tau);
-            ctx.strokeStyle = "#ffb347";
-            ctx.lineWidth = 0.9;
-            ctx.globalAlpha = 0.85;
+            ctx.strokeStyle = "#ff4d4d";
+            ctx.lineWidth = ringW + (shtN ? 0.4 : 0);
+            ctx.globalAlpha = 0.98;
+            ctx.arc(sx, sy, rr - ringW * 0.45, a0, a0 + Math.max((homN / g.n) * tau, 0.12));
             ctx.stroke();
           }
           ctx.globalAlpha = 0.95;
-          ctx.fillStyle = "#e8f6ff";
-          ctx.fillText(String(g.n), sx, sy + 0.5);
+          if (homN && shtN && rr >= 14) {
+            ctx.font = "600 8px 'IBM Plex Mono', ui-monospace, monospace";
+            ctx.fillStyle = "#ff4d4d";
+            ctx.fillText(String(homN), sx, sy - 4);
+            ctx.fillStyle = "#ffb347";
+            ctx.fillText(String(shtN), sx, sy + 6);
+            ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+          } else {
+            ctx.fillStyle = "#e8f6ff";
+            ctx.fillText(String(g.n), sx, sy + 0.5);
+          }
           if (record) {
             hits.current.push({
               title: `${g.n} incidents`,
@@ -1516,7 +1524,7 @@ export function TnMap({
   useEffect(() => {
     if (drawRaf.current) cancelAnimationFrame(drawRaf.current);
     drawRaf.current = requestAnimationFrame(drawDots);
-  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, layers.dispatch, layers.house, crimeLayers, flights, dispatchPts, housePts, zipPts, showZips, raceLayers, pickedZip]);
+  }, [crimePts, alprPts, camPts, sorPts, sitePts, showCrime, showSor, selected, layers.flock, layers.cameras, layers.sites, layers.flights, layers.dispatch, layers.house, crimeLayers, flights, dispatchPts, housePts, zipPts, showZips, raceLayers, pickedZip, picked?.crime.id]);
 
   useEffect(() => {
     if (!showCrime) return;
@@ -1782,6 +1790,7 @@ export function TnMap({
       stealClick.current = true;
       skipSelect.current = true;
       setTip(null);
+      if (!selectedRef.current) onClusterIntercept?.();
       const span = Math.max(8, (viewRef.current.w * 0.42) / Math.max(1, Math.log2(h.cluster.n + 1)));
       animateTo({
         x: h.cluster.x - span / 2,

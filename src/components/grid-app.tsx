@@ -29,7 +29,6 @@ import { prefetchNews } from "@/lib/news-cache";
 import { cn } from "@/lib/utils";
 import { AddressSearch } from "./address-search";
 import { CrimeOpsStrip } from "./crime-ops-strip";
-import { CrimeTips } from "./crime-tips";
 import { CrimeShare, FeedPanel } from "./feed-panel";
 import { LayerToggles } from "./layer-toggles";
 import { MarketTicker } from "./market-ticker";
@@ -452,7 +451,17 @@ export function GridApp() {
     [crime, crimeWindow, crimeAgency, crimeLayers.cad],
   );
 
-  const crimeOps = useMemo(() => countCrimeOps(crime, crimeWindow), [crime, crimeWindow]);
+  const opsLive = useMemo(
+    () => countCrimeOps(crime, crimeWindow, crimeAgency),
+    [crime, crimeWindow, crimeAgency],
+  );
+  const [opsHeld, setOpsHeld] = useState(opsLive);
+  useEffect(() => {
+    if (crimeReady) setOpsHeld(opsLive);
+  }, [crimeReady, opsLive]);
+  const crimeOps = crimeReady ? opsLive : opsHeld;
+  const opsReady = crimeReady || opsHeld.hom + opsHeld.sht + opsHeld.lead > 0;
+  const [drillTick, setDrillTick] = useState(0);
 
   function toggle(id: LayerId) {
     if (id === "race" && layers.race) {
@@ -543,9 +552,10 @@ export function GridApp() {
               hom={crimeOps.hom}
               sht={crimeOps.sht}
               lead={crimeOps.lead}
-              ready={crimeReady}
+              ready={opsReady}
               isolated={crimeLayers.hom && !crimeLayers.sht}
               onIsolateHom={isolateHom}
+              drillTick={drillTick}
             />
           ) : null}
           <div className="relative mt-1 flex flex-col items-start">
@@ -642,8 +652,8 @@ export function GridApp() {
           focusZip={zipFocus}
           feedHidden={feedSize === "hidden"}
           onBackToState={backToState}
+          onClusterIntercept={() => setDrillTick((n) => n + 1)}
         />
-        {layers.crime ? <CrimeTips /> : null}
         {feedSize === "hidden" ? (
           <button
             type="button"

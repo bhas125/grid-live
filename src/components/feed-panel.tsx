@@ -328,21 +328,21 @@ function CrimeFeed({
       </p>
       {empty && hint ? (
         <div className="px-4 py-3">
-          <p className="text-sm text-muted">{hint.line}</p>
-          {hint.action === "ytd" && onCrimeWindow ? (
+          <p className="font-mono text-xs tracking-wide text-muted uppercase">{hint.line}</p>
+          {hint.action === "48h" && onCrimeWindow ? (
             <button
               type="button"
-              onClick={() => onCrimeWindow("ytd")}
-              className="mt-2 h-6 border border-grid bg-grid/15 px-1.5 font-mono text-[10px] tracking-widest text-grid uppercase"
+              onClick={() => onCrimeWindow("48h")}
+              className="chip-press mt-2 h-6 border border-grid bg-grid/15 px-1.5 font-mono text-[10px] tracking-widest text-grid uppercase"
             >
               {hint.actionLabel}
             </button>
           ) : null}
-          {hint.action === "tn" && onAllAgencies ? (
+          {hint.action === "all" && onAllAgencies ? (
             <button
               type="button"
               onClick={onAllAgencies}
-              className="mt-2 h-6 border border-grid bg-grid/15 px-1.5 font-mono text-[10px] tracking-widest text-grid uppercase"
+              className="chip-press mt-2 h-6 border border-grid bg-grid/15 px-1.5 font-mono text-[10px] tracking-widest text-grid uppercase"
             >
               {hint.actionLabel}
             </button>

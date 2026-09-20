@@ -79,7 +79,7 @@ export function LayerToggles({
               onClick={() => onToggle(item.id)}
               aria-pressed={on}
               className={cn(
-                "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                 on
                   ? "border-grid bg-grid/15 text-grid"
                   : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
@@ -123,7 +123,7 @@ export function LayerToggles({
                         : undefined
                   }
                   className={cn(
-                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                     on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
                   )}
                 >
@@ -138,7 +138,7 @@ export function LayerToggles({
                 aria-pressed={crimeLayers.hom && !crimeLayers.sht}
                 title="Turn off SHT to isolate homicides"
                 className={cn(
-                  "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                  "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                   crimeLayers.hom && !crimeLayers.sht
                     ? "border-hot bg-hot/15 text-hot"
                     : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
@@ -158,7 +158,7 @@ export function LayerToggles({
                   onClick={() => onCrimeWindow(item.id)}
                   aria-pressed={on}
                   className={cn(
-                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                     on
                       ? item.chip ?? "border-grid bg-grid/15 text-grid"
                       : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
@@ -177,8 +177,9 @@ export function LayerToggles({
                   type="button"
                   onClick={() => onToggleAgency(item.id)}
                   aria-pressed={on}
+                  title={item.title}
                   className={cn(
-                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                     on
                       ? "border-steel bg-steel/15 text-steel"
                       : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
@@ -193,15 +194,15 @@ export function LayerToggles({
                 type="button"
                 onClick={onAllAgencies}
                 aria-pressed={allAgenciesOn(crimeAgency)}
-                title="All Tennessee agencies"
+                title="Tennessee statewide · all agencies"
                 className={cn(
-                  "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                  "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                   allAgenciesOn(crimeAgency)
                     ? "border-grid bg-grid/15 text-grid"
                     : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
                 )}
               >
-                TN
+                ALL
               </button>
             ) : null}
           </div>
@@ -217,10 +218,10 @@ export function LayerToggles({
                 type="button"
                 onClick={() => onToggleRace(item.id)}
                 aria-pressed={on}
-                className={cn(
-                  "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
-                  on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
-                )}
+                  className={cn(
+                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+                  )}
               >
                 {item.label}
               </button>
@@ -252,7 +253,7 @@ function ExpandChip({
         onClick={onToggle}
         aria-pressed={on}
         className={cn(
-          "px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+          "chip-press px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
           on ? "bg-grid/15 text-grid" : "bg-surface/90 text-faint hover:text-muted",
         )}
       >

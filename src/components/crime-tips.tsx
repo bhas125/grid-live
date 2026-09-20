@@ -4,69 +4,77 @@ import { X } from "lucide-react";
 const TIP_ISOLATE = "grid-tip-isolate-hom";
 const TIP_DRILL = "grid-tip-drill";
 
-type TipId = "isolate" | "drill";
-
-export function CrimeTips() {
-  const [show, setShow] = useState<{ isolate: boolean; drill: boolean } | null>(null);
+export function useCrimeCoaches(drillTick: number) {
+  const [isolate, setIsolate] = useState(false);
+  const [drill, setDrill] = useState(false);
 
   useEffect(() => {
     try {
-      setShow({
-        isolate: localStorage.getItem(TIP_ISOLATE) !== "1",
-        drill: localStorage.getItem(TIP_DRILL) !== "1",
-      });
+      setIsolate(localStorage.getItem(TIP_ISOLATE) !== "1");
     } catch {
-      setShow({ isolate: true, drill: true });
+      setIsolate(true);
     }
   }, []);
 
-  function dismiss(id: TipId) {
-    const key = id === "isolate" ? TIP_ISOLATE : TIP_DRILL;
+  useEffect(() => {
+    if (!isolate) return;
+    const t = window.setTimeout(() => {
+      try {
+        localStorage.setItem(TIP_ISOLATE, "1");
+      } catch {
+        /* ignore */
+      }
+      setIsolate(false);
+    }, 2200);
+    return () => window.clearTimeout(t);
+  }, [isolate]);
+
+  useEffect(() => {
+    if (drillTick < 1) return;
+    try {
+      if (localStorage.getItem(TIP_DRILL) === "1") return;
+    } catch {
+      /* show */
+    }
+    setDrill(true);
+  }, [drillTick]);
+
+  function persist(key: string) {
     try {
       localStorage.setItem(key, "1");
     } catch {
       /* ignore */
     }
-    setShow((prev) => (prev ? { ...prev, [id]: false } : prev));
   }
 
-  if (!show || (!show.isolate && !show.drill)) return null;
+  function dismissIsolate() {
+    persist(TIP_ISOLATE);
+    setIsolate(false);
+  }
 
-  return (
-    <div
-      data-crime-tips
-      className="pointer-events-none absolute top-12 left-1/2 z-30 flex w-[min(92%,22rem)] -translate-x-1/2 flex-col gap-1"
-    >
-      {show.isolate ? (
-        <TipCard
-          text="Deselect SHT — or tap Isolate HOM — to see homicides without shooting bubbles."
-          onDismiss={() => dismiss("isolate")}
-        />
-      ) : null}
-      {show.drill ? (
-        <TipCard
-          text="Tap a county fill or a feed row to drill in. STATE returns to Tennessee."
-          onDismiss={() => dismiss("drill")}
-        />
-      ) : null}
-    </div>
-  );
+  function dismissDrill() {
+    persist(TIP_DRILL);
+    setDrill(false);
+  }
+
+  return { isolate, drill, dismissIsolate, dismissDrill };
 }
 
-function TipCard({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+export function CoachLine({ text, onDismiss }: { text: string; onDismiss: () => void }) {
   return (
-    <div className="map-pop pointer-events-auto flex items-start gap-2 border border-line bg-elevated/95 px-2.5 py-2 shadow-glow">
-      <p className="min-w-0 flex-1 font-mono text-[10px] leading-snug tracking-wide text-muted uppercase">
-        {text}
-      </p>
+    <p
+      data-crime-tips
+      className="map-pop mt-0.5 flex max-w-[22rem] items-start gap-1 font-mono text-[10px] leading-snug tracking-wide text-muted uppercase"
+    >
+      <span className="min-w-0 flex-1">{text}</span>
       <button
         type="button"
         aria-label="Dismiss tip"
         onClick={onDismiss}
-        className="grid size-8 shrink-0 place-items-center text-faint hover:text-fg"
+        className="grid size-6 shrink-0 place-items-center text-faint hover:text-fg"
       >
-        <X className="size-3.5" />
+        <X className="size-3" />
       </button>
-    </div>
+    </p>
   );
 }
