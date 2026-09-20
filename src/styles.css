@@ -128,6 +128,46 @@
   animation: map-card-pop 150ms ease-out;
 }
 
+.ticker-track {
+  height: 24px;
+  overflow: hidden;
+}
+
+.ticker-track:hover .ticker-crawl {
+  animation-play-state: paused;
+}
+
+.ticker-crawl {
+  display: flex;
+  width: max-content;
+  height: 24px;
+  align-items: center;
+  animation: ticker-crawl 48s linear infinite;
+}
+
+.ticker-static {
+  display: flex;
+  height: 24px;
+  align-items: center;
+  overflow: hidden;
+  padding: 0 12px;
+}
+
+@keyframes ticker-crawl {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-crawl {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .map-card-pop {
     animation: none;

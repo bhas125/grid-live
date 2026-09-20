@@ -31,9 +31,7 @@ import { AddressSearch } from "./address-search";
 import { CrimeFirstTips, CrimeOpsStrip } from "./crime-ops-strip";
 import { CrimeShare, FeedPanel } from "./feed-panel";
 import { LayerToggles } from "./layer-toggles";
-import { MarketTicker } from "./market-ticker";
-import { DebtClock } from "./debt-clock";
-import { FinanceTicker } from "./finance-ticker";
+import { NewsTicker } from "./news-ticker";
 import { TnMap } from "./tn-map";
 
 const COUNTIES = countiesJson as County[];
@@ -493,11 +491,12 @@ export function GridApp() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-bg text-fg">
-      <header className="shrink-0 py-3 pr-2 pl-4 sm:pr-3 sm:pl-6">
-        <div className="flex items-start justify-between gap-3">
+      <NewsTicker wxLabel={wx?.label} />
+      <header className="shrink-0 py-2 pr-2 pl-4 sm:pr-3 sm:pl-6">
+        <div className="flex items-center justify-between gap-3">
         <div>
           {selected ? (
-            <div className="flex h-11 items-center gap-2">
+            <div className="flex h-10 items-center gap-2">
               <button
                 type="button"
                 onClick={backToState}
@@ -512,7 +511,7 @@ export function GridApp() {
               </span>
             </div>
           ) : (
-            <div className="flex h-11 items-center gap-3">
+            <div className="flex h-10 items-center gap-3">
               <span className="grid grid-cols-2 gap-px" aria-hidden="true">
                 <span className="size-1.5 bg-grid shadow-glow" />
                 <span className="size-1.5 bg-grid/40" />
@@ -544,22 +543,12 @@ export function GridApp() {
             </button>
           </div>
         </div>
-        <div className="ml-auto flex shrink-0 flex-col items-end text-right">
+        <div className="ml-auto shrink-0 text-right">
           {wx ? (
-            <>
-              <div className="font-display text-4xl leading-none tabular">{wx.temp}°</div>
-              <div className="mt-0.5 font-mono text-xs tracking-widest text-faint uppercase">
-                {wx.label}
-              </div>
-            </>
+            <div className="font-display text-4xl leading-none tabular">{wx.temp}°</div>
           ) : (
             <div className="h-10 w-16 animate-pulse bg-elevated/80" />
           )}
-          <div className={selected ? "hidden w-48" : "w-48"}>
-            <MarketTicker active={!selected} />
-            <DebtClock />
-            <FinanceTicker active={!selected} />
-          </div>
         </div>
         </div>
       </header>

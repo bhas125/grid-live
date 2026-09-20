@@ -10,19 +10,20 @@ Tennessee county situation monitor — map, news, markets, crime, sit briefs.
 Use the **Vercel Preview URL on the PR** — not production, not `grid.blastpad.app`.
 
 1. Open the Preview URL from the pull request.
-2. Hard-refresh once (`Cmd/Ctrl-Shift-R`) so the new ops strip and cluster rings load.
+2. Hard-refresh once (`Cmd/Ctrl-Shift-R`) so the top ticker, hex state view, and Isolate HOM chip load.
 3. Pass the existing Google 404 gate the same way as production.
 4. Turn on **Crime**. YTD stays the default. Snapshot data prefers live `https://grid.blastpad.app/crime-tn.json`.
 
 Included in this preview:
 
+- Horizontal **news ticker / crawl at the very top** (wx metros, DJI/COMP, US Debt, finance headlines). Stacked right-side column removed so the map is taller.
+- Statewide **hexbin / H3-style** aggregation (compact cells, count + HOM/SHT dual fill / badge). No large circular Supercluster bubbles.
+- Ripples gated: none at state/hex; solid compact markers at first county zoom; Motion loading-ripple only at pin/county detail, max radius ~8px / 1.2% of map width.
 - Persistent HOM / SHT / LEAD ops bar **under the map** (no flash of zeros on load)
 - First-run dismissible tips (localStorage)
-- **Isolate HOM** action (always visible on Crime; **Show SHT** to restore)
+- **Isolate HOM** action (always visible on Crime; label stays “Isolate HOM”; **Show SHT** restores)
 - Always-visible **STATE** when a county is drilled
 - Crime pin/cluster hits beat Roads; larger phone tap targets
-- Motion-style ripple clusters (HOM red / SHT amber) with a center count
-- Clamped `√n` bubble scale so YTD metros cannot eat the map
 - TODAY empty-state one-liner
 - Light 150ms popup scale/opacity — no Lottie
 - Metro agency chips (MEM / NASH / CHAT / REST) removed

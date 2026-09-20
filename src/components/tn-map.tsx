@@ -5,7 +5,7 @@ import roadsJson from "@/data/roads.json";
 import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
 import { isFresh48 } from "@/lib/crime-fresh";
-import { clusterByCounty, clusterRadius, clusterXY } from "@/lib/crime-cluster";
+import { clusterRadius, clusterXY, hexBin, hexScreenRadius } from "@/lib/crime-cluster";
 import {
   crimeLabel,
   inferGeo,
@@ -105,6 +105,28 @@ function storyHref(c: CrimeIncident, names?: CrimeNames | null) {
 const RIPPLE_MS = 1800;
 const RIPPLE_RINGS = 3;
 
+function pathHex(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i;
+    const x = cx + r * Math.cos(a);
+    const y = cy + r * Math.sin(a);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function shortCount(n: number) {
+  if (n >= 10000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+function rippleCap(mapW: number) {
+  return Math.max(5, Math.min(8, mapW * 0.012));
+}
+
 function drawClusterRipples(
   ctx: CanvasRenderingContext2D,
   sx: number,
@@ -114,22 +136,25 @@ function drawClusterRipples(
   now: number,
   reduced: boolean,
   phaseOffset = 0,
+  maxR?: number,
 ) {
+  const cap = maxR ?? rippleCap(400);
+  const core = Math.min(rr, cap * 0.55);
   ctx.strokeStyle = color;
   if (reduced) {
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 1.8;
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.arc(sx, sy, rr * 1.1, 0, Math.PI * 2);
+    ctx.arc(sx, sy, Math.min(cap, core * 1.15), 0, Math.PI * 2);
     ctx.stroke();
     return;
   }
   for (let i = 0; i < RIPPLE_RINGS; i++) {
     const phase = ((now / RIPPLE_MS) + i / RIPPLE_RINGS + phaseOffset) % 1;
-    ctx.globalAlpha = (1 - phase) * 0.7;
-    ctx.lineWidth = 2;
+    ctx.globalAlpha = (1 - phase) * 0.55;
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.arc(sx, sy, rr * (0.5 + phase * 0.85), 0, Math.PI * 2);
+    ctx.arc(sx, sy, Math.min(cap, core * (0.7 + phase * 0.9)), 0, Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -1220,17 +1245,19 @@ export function TnMap({
       const fitW = fitRef.current.w || cur.w;
       const ratio = fitW / Math.max(1, cur.w);
       const dense = isDenseCounty(selectedRef.current?.name);
-      const stateZoom = FULL_VIEW.w / Math.max(1, cur.w);
       const overRace = showZipsRef.current;
-      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
-      const metro = new Set(["Shelby", "Davidson", "Hamilton", "Knox"]);
+      const hexView = !zoomedNow;
+      const compactView = zoomedNow && dense && ratio < 2.2;
+      const wantCluster = hexView || compactView;
+      const detailRipple = zoomedNow && !compactView;
+      const capR = rippleCap(w);
 
       const pinColor = (c: CrimePt) => {
         if (isHomicide(c.type)) return "#ff4d4d";
         return "#ffb347";
       };
 
-      const drawPin = (c: CrimePt, force: boolean) => {
+      const drawPin = (c: CrimePt, force: boolean, ripple = false) => {
         const sx = (c.x - cur.x) * s + ox;
         const sy = (c.y - cur.y) * s + oy;
         if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) return;
@@ -1240,6 +1267,12 @@ export function TnMap({
         const hom = isHomicide(c.type);
         let r = (hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35) * (overRace ? 1.35 : 1);
         const col = pinColor(c);
+        if (ripple) {
+          clusterRipple = true;
+          const now = busy.current ? rippleFrozen.current : performance.now();
+          if (!busy.current) rippleFrozen.current = now;
+          drawClusterRipples(ctx, sx, sy, r + 2, col, now, reduceMotion.current, hom ? 0.33 : 0, capR);
+        }
         ctx.beginPath();
         ctx.arc(sx, sy, fuzzy ? r + 1.1 : r, 0, Math.PI * 2);
         if (fuzzy) {
@@ -1270,61 +1303,101 @@ export function TnMap({
       };
 
       if (wantCluster) {
-        const groups = !zoomedNow
-          ? stateZoom < 1.18
-            ? clusterByCounty(plot, { minN: 8, restCell: 38, always: metro })
-            : stateZoom < 2.05
-              ? clusterXY(plot, 14)
-              : clusterXY(plot, 7)
-          : clusterXY(plot, 5.8);
+        const hexR = hexScreenRadius(w);
+        const groups = hexView ? hexBin(plot, hexR / Math.max(0.45, s)) : clusterXY(plot, 5.8);
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+        ctx.font = "700 9px 'IBM Plex Mono', ui-monospace, monospace";
         for (const g of groups) {
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
           if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
           if (g.n === 1) {
-            drawPin(g.items[0], true);
+            drawPin(g.items[0], true, detailRipple);
             continue;
           }
           if (!stamp(sx, sy, true)) continue;
-          clusterRipple = true;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
           const shtN = g.n - homN;
           const counties = new Set(g.items.map((it) => it.county).filter(Boolean));
           const clusterCounty = counties.size === 1 ? [...counties][0] : undefined;
-          const rr = clusterRadius(g.n, w);
-          const now = busy.current ? rippleFrozen.current : performance.now();
-          if (!busy.current) rippleFrozen.current = now;
-          const reduced = reduceMotion.current;
-          if (shtN) drawClusterRipples(ctx, sx, sy, rr, "#ffb347", now, reduced, 0);
-          if (homN) drawClusterRipples(ctx, sx, sy, rr, "#ff4d4d", now, reduced, shtN ? 0.33 : 0);
+          const majority = homN >= shtN ? "#ff4d4d" : "#ffb347";
+          if (hexView) {
+            ctx.save();
+            pathHex(ctx, sx, sy, hexR);
+            ctx.clip();
+            if (homN && shtN) {
+              ctx.fillStyle = "#ffb347";
+              ctx.globalAlpha = overRace ? 0.82 : 0.88;
+              ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2);
+              ctx.fillStyle = "#ff4d4d";
+              ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2 * (homN / g.n));
+            } else {
+              ctx.fillStyle = majority;
+              ctx.globalAlpha = overRace ? 0.82 : 0.9;
+              ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2);
+            }
+            ctx.restore();
+            pathHex(ctx, sx, sy, hexR);
+            ctx.globalAlpha = 0.95;
+            ctx.lineWidth = 1.05;
+            ctx.strokeStyle = majority;
+            ctx.stroke();
+            const label = shortCount(g.n);
+            ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
+            const tw = ctx.measureText(label).width;
+            ctx.fillStyle = "rgba(10,14,20,0.72)";
+            ctx.globalAlpha = 1;
+            ctx.fillRect(sx - tw / 2 - 2.5, sy - 5.5, tw + 5, 11);
+            ctx.fillStyle = "#e8f6ff";
+            ctx.fillText(label, sx, sy + 0.5);
+            if (homN && shtN) {
+              const badge = shortCount(homN);
+              ctx.font = "700 7px 'IBM Plex Mono', ui-monospace, monospace";
+              const bw = Math.max(9, ctx.measureText(badge).width + 4);
+              const bx = sx + hexR * 0.28;
+              const by = sy - hexR * 0.92;
+              ctx.fillStyle = "#ff4d4d";
+              ctx.fillRect(bx, by, bw, 9);
+              ctx.fillStyle = "#fff5f5";
+              ctx.fillText(badge, bx + bw / 2, by + 5);
+            }
+            if (record) {
+              const tap = coarsePointer.current ? 10 : 0;
+              hits.current.push({
+                title: `${g.n} incidents`,
+                lines: [`${homN} hom · ${shtN} sht`],
+                x: sx,
+                y: sy,
+                r: hexR + 3 + tap,
+                cluster: { x: g.x, y: g.y, n: g.n, county: clusterCounty },
+              });
+            }
+            continue;
+          }
+          const rr = clusterRadius(g.n, w, { rMin: 5, rMaxPx: 10, rMaxFrac: 0.02, nSoft: 48 });
           ctx.beginPath();
           ctx.fillStyle = "#0a0e14";
-          ctx.globalAlpha = overRace ? 0.72 : 0.62;
-          ctx.arc(sx, sy, Math.max(6, rr * 0.62), 0, Math.PI * 2);
+          ctx.globalAlpha = overRace ? 0.78 : 0.7;
+          ctx.arc(sx, sy, Math.max(5, rr * 0.72), 0, Math.PI * 2);
           ctx.fill();
-          ctx.lineWidth = 1.2;
-          ctx.globalAlpha = 0.9;
-          ctx.strokeStyle = homN >= shtN ? "#ff4d4d" : "#ffb347";
+          ctx.lineWidth = 1.15;
+          ctx.globalAlpha = 0.92;
+          ctx.strokeStyle = majority;
           ctx.stroke();
           ctx.globalAlpha = 0.96;
           ctx.fillStyle = "#e8f6ff";
-          ctx.font = rr >= 12 ? "700 10px 'IBM Plex Mono', ui-monospace, monospace" : "700 9px 'IBM Plex Mono', ui-monospace, monospace";
-          ctx.fillText(String(g.n), sx, sy + 0.5);
+          ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
+          ctx.fillText(shortCount(g.n), sx, sy + 0.5);
           if (homN && shtN) {
-            const badge = String(homN);
-            ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
-            const bw = Math.max(11, ctx.measureText(badge).width + 5);
-            const bx = sx + rr * 0.42;
-            const by = sy - rr * 0.78;
+            const badge = shortCount(homN);
+            ctx.font = "700 7px 'IBM Plex Mono', ui-monospace, monospace";
+            const bw = Math.max(9, ctx.measureText(badge).width + 4);
             ctx.fillStyle = "#ff4d4d";
-            ctx.fillRect(bx, by, bw, 11);
+            ctx.fillRect(sx + rr * 0.35, sy - rr * 0.95, bw, 9);
             ctx.fillStyle = "#fff5f5";
-            ctx.fillText(badge, bx + bw / 2, by + 6);
+            ctx.fillText(badge, sx + rr * 0.35 + bw / 2, sy - rr * 0.95 + 5);
           }
-          ctx.font = "600 9px 'IBM Plex Mono', ui-monospace, monospace";
           if (record) {
             const tap = coarsePointer.current ? 10 : 0;
             hits.current.push({
@@ -1332,14 +1405,14 @@ export function TnMap({
               lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
-              r: rr * 1.2 + 4 + tap,
+              r: rr + 4 + tap,
               cluster: { x: g.x, y: g.y, n: g.n, county: clusterCounty },
             });
           }
         }
         ctx.globalAlpha = 1;
       } else {
-        for (const c of plot) drawPin(c, true);
+        for (const c of plot) drawPin(c, true, detailRipple);
       }
 
       if (leads.length) {
