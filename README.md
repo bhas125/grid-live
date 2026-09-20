@@ -3,7 +3,29 @@
 Tennessee county situation monitor — map, news, markets, crime, sit briefs.
 
 - Latest build: https://daisy-opal-arch-summit.grok.me
-- Production domain: https://grid.blakehassler.com
+- Production domain: https://grid.blastpad.app
+
+## UX preview playtest
+
+Use the **Vercel Preview URL on the PR** — not production, not `grid.blastpad.app`.
+
+1. Open the Preview URL from the pull request.
+2. Hard-refresh once (`Cmd/Ctrl-Shift-R`) so the new ops strip and cluster rings load.
+3. Pass the existing Google 404 gate the same way as production.
+4. Turn on **Crime**. YTD stays the default. Snapshot data prefers live `https://grid.blastpad.app/crime-tn.json`.
+
+Included in this preview:
+
+- Persistent HOM / SHT / LEAD ops strip (no flash of zeros on load)
+- First-run dismissible tips (localStorage)
+- **HOM only** chip (clears SHT)
+- Always-visible **STATE** when a county is drilled
+- Crime pin/cluster hits beat Roads; larger phone tap targets
+- Dual-ring clusters with a HOM badge so SHT does not drown HOM
+- TODAY / REST empty-state one-liners and a **TN** (all-agencies) chip
+- Light 150ms popup scale/opacity — no Lottie
+
+Do not promote this preview to production. Palette, Lead purple, YTD default, gate, and the crime merge pipeline are unchanged.
 
 ## Put this version on grid.blakehassler.com
 

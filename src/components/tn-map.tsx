@@ -184,7 +184,7 @@ type Hit = {
   cam?: TrafficCam;
   sor?: SorPoint;
   flight?: Flight;
-  cluster?: { x: number; y: number; n: number };
+  cluster?: { x: number; y: number; n: number; county?: string };
 };
 
 type Tip = {
@@ -442,6 +442,7 @@ export function TnMap({
   onWarmZips,
   focusZip = null,
   feedHidden = false,
+  onBackToState,
 }: {
   geo: GeoFeature[] | null;
   selected: County | null;
@@ -466,6 +467,7 @@ export function TnMap({
   onWarmZips?: (fips: string) => void;
   focusZip?: { lon: number; lat: number } | null;
   feedHidden?: boolean;
+  onBackToState?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -489,6 +491,7 @@ export function TnMap({
   const [sor, setSor] = useState<SorPoint[]>([]);
   const skipSelect = useRef(false);
   const stealClick = useRef(false);
+  const coarsePointer = useRef(false);
   const pan = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
   const [alpr, setAlpr] = useState<AlprPoint[]>([]);
   const [cams, setCams] = useState<TrafficCam[]>([]);
@@ -677,6 +680,16 @@ export function TnMap({
       live = false;
     };
   }, [selected, layers.p24]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    const apply = () => {
+      coarsePointer.current = mq.matches;
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const paths = useMemo(() => {
     if (!geo || !project) return [];
@@ -1203,12 +1216,13 @@ export function TnMap({
           ctx.stroke();
         }
         if (record) {
+          const tap = coarsePointer.current ? 14 : 0;
           hits.current.push({
             title: crimeLabel(c.type),
             lines: crimeTipLines(c),
             x: sx,
             y: sy,
-            r: r + (fuzzy ? 10 : 8),
+            r: r + (fuzzy ? 10 : 8) + tap,
             crime: c,
           });
         }
@@ -1236,28 +1250,53 @@ export function TnMap({
           if (!stamp(sx, sy, true)) continue;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
           const shtN = g.n - homN;
-          const fill = homN >= shtN ? "#ff4d4d" : "#ffb347";
+          const counties = new Set(g.items.map((it) => it.county).filter(Boolean));
+          const clusterCounty = counties.size === 1 ? [...counties][0] : undefined;
           const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
+          const homFrac = g.n ? homN / g.n : 0;
           ctx.beginPath();
-          ctx.fillStyle = fill;
-          ctx.strokeStyle = overRace ? "#e8f6ff" : fill;
-          ctx.lineWidth = overRace ? 1.2 : 1.1;
-          ctx.globalAlpha = overRace ? 0.7 : !zoomedNow && stateZoom < 1.18 ? 0.42 : 0.28;
+          ctx.fillStyle = "#0a0e14";
+          ctx.globalAlpha = overRace ? 0.55 : !zoomedNow && stateZoom < 1.18 ? 0.38 : 0.3;
           ctx.arc(sx, sy, rr, 0, Math.PI * 2);
           ctx.fill();
-          ctx.globalAlpha = overRace ? 0.95 : 0.78;
-          ctx.stroke();
+          ctx.lineWidth = overRace ? 2.4 : 2.1;
+          ctx.globalAlpha = overRace ? 0.95 : 0.88;
+          if (shtN) {
+            ctx.beginPath();
+            ctx.strokeStyle = "#ffb347";
+            ctx.arc(sx, sy, rr, -Math.PI / 2 + homFrac * Math.PI * 2, -Math.PI / 2 + Math.PI * 2);
+            ctx.stroke();
+          }
+          if (homN) {
+            ctx.beginPath();
+            ctx.strokeStyle = "#ff4d4d";
+            ctx.arc(sx, sy, rr, -Math.PI / 2, -Math.PI / 2 + homFrac * Math.PI * 2);
+            ctx.stroke();
+          }
           ctx.globalAlpha = 0.95;
           ctx.fillStyle = "#e8f6ff";
           ctx.fillText(String(g.n), sx, sy + 0.5);
+          if (homN) {
+            const badge = String(homN);
+            ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
+            const bw = Math.max(11, ctx.measureText(badge).width + 5);
+            const bx = sx + rr * 0.55;
+            const by = sy - rr * 0.85;
+            ctx.fillStyle = "#ff4d4d";
+            ctx.fillRect(bx, by, bw, 11);
+            ctx.fillStyle = "#fff5f5";
+            ctx.fillText(badge, bx + bw / 2, by + 6);
+            ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+          }
           if (record) {
+            const tap = coarsePointer.current ? 10 : 0;
             hits.current.push({
               title: `${g.n} incidents`,
               lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
-              r: rr + 8,
-              cluster: { x: g.x, y: g.y, n: g.n },
+              r: rr + 4 + tap,
+              cluster: { x: g.x, y: g.y, n: g.n, county: clusterCounty },
             });
           }
         }
@@ -1283,12 +1322,13 @@ export function TnMap({
           ctx.stroke();
           ctx.setLineDash([]);
           if (record) {
+            const tap = coarsePointer.current ? 14 : 0;
             hits.current.push({
               title: "Lead (unconfirmed)",
               lines: crimeTipLines(c),
               x: sx,
               y: sy,
-              r: rr + 10,
+              r: rr + 10 + tap,
               crime: c,
             });
           }
@@ -1713,13 +1753,21 @@ export function TnMap({
   function pickDotAt(clientX: number, clientY: number) {
     const h = hitAt(clientX, clientY, true);
     if (h?.cluster) {
+      const cluster = h.cluster;
       stealClick.current = true;
       skipSelect.current = true;
       setTip(null);
-      const span = Math.max(8, (viewRef.current.w * 0.42) / Math.max(1, Math.log2(h.cluster.n + 1)));
+      if (!selected && cluster.county) {
+        const county = COUNTIES.find((c) => c.name === cluster.county);
+        if (county) {
+          onSelect(county);
+          return true;
+        }
+      }
+      const span = Math.max(8, (viewRef.current.w * 0.42) / Math.max(1, Math.log2(cluster.n + 1)));
       animateTo({
-        x: h.cluster.x - span / 2,
-        y: h.cluster.y - span / 2,
+        x: cluster.x - span / 2,
+        y: cluster.y - span / 2,
         w: span,
         h: span * 0.55,
       });
@@ -1978,7 +2026,7 @@ export function TnMap({
                       : fillColor(county?.pop ?? 8000, isSel, dim, wx, streets && isSel)
                   }
                   stroke={isSel ? "var(--color-fg)" : dim ? "transparent" : "var(--color-grid)"}
-                  strokeWidth={isSel ? (streets ? 0.08 : zoomed ? 0.85 : 1.35) : zoomed ? 0 : 0.55}
+                  strokeWidth={isSel ? (streets ? 0.08 : zoomed ? 0.85 : 1.35) : zoomed ? 0 : 1.35}
                   filter={isSel && !streets ? "url(#line-glow-hot)" : undefined}
                   className={dim ? "pointer-events-none" : zoomed ? undefined : "cursor-pointer"}
                   pointerEvents={dim ? "none" : "auto"}
@@ -2120,14 +2168,16 @@ export function TnMap({
                           fill="none"
                           stroke="transparent"
                           strokeWidth={zoomed ? 1.6 : 3}
-                          className={showZips ? undefined : "cursor-pointer"}
-                          pointerEvents={showZips ? "none" : "auto"}
-                          onMouseEnter={(e) =>
-                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"])
-                          }
-                          onMouseMove={(e) =>
-                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"])
-                          }
+                          className={showZips || showCrime ? undefined : "cursor-pointer"}
+                          pointerEvents={showZips || showCrime ? "none" : "auto"}
+                          onMouseEnter={(e) => {
+                            if (showCrime && hitAt(e.clientX, e.clientY, true)) return;
+                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"]);
+                          }}
+                          onMouseMove={(e) => {
+                            if (showCrime && hitAt(e.clientX, e.clientY, true)) return;
+                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"]);
+                          }}
                           onMouseLeave={() => setTip(null)}
                         />
                         <path
@@ -2329,9 +2379,20 @@ export function TnMap({
           </div>
         </div>
       ) : null}
+      {selected && onBackToState ? (
+        <button
+          type="button"
+          onClick={onBackToState}
+          aria-label="Back to state"
+          className="absolute top-2 left-2 z-30 inline-flex h-8 items-center gap-1 border border-grid/50 bg-elevated/95 px-2 font-mono text-[10px] tracking-widest text-grid uppercase hover:bg-grid/15"
+        >
+          <ChevronLeft className="size-3.5" />
+          STATE
+        </button>
+      ) : null}
       {tip && !picked && !pickedCam && !pickedSor ? (
         <div
-          className="pointer-events-none absolute z-10 w-56 border border-line bg-elevated/95 px-3 py-2 shadow-glow"
+          className="pointer-events-none absolute z-10 w-56 border border-line bg-elevated/95 px-3 py-2 shadow-glow map-card-pop"
           style={tipStyle(tip)}
         >
           <div className="text-sm font-medium">{tip.title}</div>
@@ -2345,7 +2406,7 @@ export function TnMap({
       {picked ? (
         <div
           data-map-card
-          className="pointer-events-auto absolute bottom-2 left-12 z-20 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+          className="map-card-pop pointer-events-auto absolute bottom-2 left-12 z-20 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -2458,8 +2519,8 @@ export function TnMap({
           data-map-card
           className={
             selected
-              ? "pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
-              : "pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              ? "map-card-pop pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              : "map-card-pop pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
           }
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
@@ -2504,8 +2565,8 @@ export function TnMap({
           data-map-card
           className={
             selected
-              ? "pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
-              : "pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              ? "map-card-pop pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              : "map-card-pop pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
           }
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}

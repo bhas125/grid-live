@@ -5,8 +5,10 @@ import officialsJson from "@/data/officials.json";
 import type {
   Alert,
   County,
+  CrimeAgencies,
   CrimeIncident,
   CrimeLayers,
+  CrimeWindow,
   ElectYear,
   NewsItem,
   Precinct,
@@ -22,6 +24,7 @@ import { cn, fmtAge, fmtMargin, fmtNum, fmtPct } from "@/lib/utils";
 import { newsCacheAge, newsCacheKey, fetchNews, readNewsCache } from "@/lib/news-cache";
 import { zipTone } from "@/lib/race-tone";
 import { isFresh48 } from "@/lib/crime-fresh";
+import { emptyCrimeLine } from "@/lib/crime-ops";
 import { crimeLabel, isHomicide, isShooting } from "@/lib/crime-window";
 import { AboutPanel } from "./about-panel";
 
@@ -220,11 +223,17 @@ function CrimeFeed({
   county,
   incidents,
   crimeLayers,
+  crimeWindow,
+  crimeAgency,
+  crimeReady,
   onPickCrime,
 }: {
   county: County | null;
   incidents: CrimeIncident[];
   crimeLayers: CrimeLayers;
+  crimeWindow: CrimeWindow;
+  crimeAgency: CrimeAgencies;
+  crimeReady: boolean;
   onPickCrime?: (c: CrimeIncident) => void;
 }) {
   const [shownHom, setShownHom] = useState(PAGE);
@@ -296,7 +305,7 @@ function CrimeFeed({
           <span className="mt-1 block text-faint">GVA through Jun 28 2026 — not a live statewide fill.</span>
         ) : null}
       </p>
-      {!incidents.length ? (
+      {!crimeReady ? (
         <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">Loading incidents</p>
       ) : null}
       {homOn && visibleHom.length ? (
@@ -311,10 +320,9 @@ function CrimeFeed({
           <CrimeRows rows={visibleSht} onPickCrime={onPickCrime} />
         </>
       ) : null}
-      {incidents.length > 0 && !homList.length && !shtList.length ? (
+      {crimeReady && !homList.length && !shtList.length ? (
         <p className="px-4 py-3 text-sm text-muted">
-          No 2026 homicide / shooting points in this county yet. Official city feeds cover
-          Memphis, Nashville, and Chattanooga; statewide GVA coverage runs through June 30.
+          {emptyCrimeLine({ window: crimeWindow, agency: crimeAgency, county: county?.name })}
         </p>
       ) : null}
       <div ref={sentinel} className="h-4" />
@@ -710,6 +718,9 @@ export function FeedPanel({
   onHide,
   crime,
   crimeLayers,
+  crimeWindow,
+  crimeAgency,
+  crimeReady,
   onPickCrime,
   electYear,
   onElectYear,
@@ -731,6 +742,9 @@ export function FeedPanel({
   onHide: () => void;
   crime: CrimeIncident[];
   crimeLayers: CrimeLayers;
+  crimeWindow: CrimeWindow;
+  crimeAgency: CrimeAgencies;
+  crimeReady: boolean;
   onPickCrime?: (c: CrimeIncident) => void;
   electYear: ElectYear;
   onElectYear: (y: ElectYear) => void;
@@ -850,7 +864,15 @@ export function FeedPanel({
       </div>
       <div className={tab === "crime" ? "flex min-h-0 flex-1 flex-col overflow-y-auto" : "hidden"}>
         {crimeLayers.hom || crimeLayers.sht ? (
-          <CrimeFeed county={county} incidents={crime} crimeLayers={crimeLayers} onPickCrime={onPickCrime} />
+          <CrimeFeed
+            county={county}
+            incidents={crime}
+            crimeLayers={crimeLayers}
+            crimeWindow={crimeWindow}
+            crimeAgency={crimeAgency}
+            crimeReady={crimeReady}
+            onPickCrime={onPickCrime}
+          />
         ) : null}
         {crimeLayers.reg ? <SorFeed county={county} active={tab === "crime" && crimeLayers.reg} /> : null}
         {!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.reg && !crimeLayers.cad ? (

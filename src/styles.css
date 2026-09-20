@@ -112,3 +112,24 @@
     animation: none;
   }
 }
+
+@keyframes map-card-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.map-card-pop {
+  animation: map-card-pop 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-card-pop {
+    animation: none;
+  }
+}

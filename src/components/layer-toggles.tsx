@@ -36,6 +36,8 @@ export function LayerToggles({
   onToggleAgency,
   crimeWindow,
   onCrimeWindow,
+  onIsolateHom,
+  onAllAgencies,
 }: {
   layers: Layers;
   onToggle: (id: LayerId) => void;
@@ -47,6 +49,8 @@ export function LayerToggles({
   onToggleAgency: (id: CrimeAgency) => void;
   crimeWindow: CrimeWindow;
   onCrimeWindow: (id: CrimeWindow) => void;
+  onIsolateHom?: () => void;
+  onAllAgencies?: () => void;
   zoomed?: boolean;
 }) {
   const [raceOpen, setRaceOpen] = useState(layers.race);
@@ -119,6 +123,15 @@ export function LayerToggles({
                 </button>
               );
             })}
+            {crimeLayers.hom && crimeLayers.sht && onIsolateHom ? (
+              <button
+                type="button"
+                onClick={onIsolateHom}
+                className="h-6 min-w-0 shrink-0 border border-hot/50 bg-hot/10 px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap text-hot uppercase hover:bg-hot/20"
+              >
+                HOM only
+              </button>
+            ) : null}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
             {WINDOW_META.map((item) => {
@@ -141,6 +154,21 @@ export function LayerToggles({
               );
             })}
             <span className="mx-0.5 h-4 w-px bg-line" />
+            {onAllAgencies ? (
+              <button
+                type="button"
+                onClick={onAllAgencies}
+                aria-pressed={crimeAgency.mem && crimeAgency.nash && crimeAgency.cha && crimeAgency.rest}
+                className={cn(
+                  "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                  crimeAgency.mem && crimeAgency.nash && crimeAgency.cha && crimeAgency.rest
+                    ? "border-grid bg-grid/15 text-grid"
+                    : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+                )}
+              >
+                TN
+              </button>
+            ) : null}
             {AGENCY_META.map((item) => {
               const on = crimeAgency[item.id];
               return (

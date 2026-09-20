@@ -24,10 +24,12 @@ import type {
 } from "@/data/types";
 import { COUNTY_XY } from "@/lib/county-xy";
 import { centroid, countyFipsAt, geomLonLatBBox, nearestCountyName, type MapPin } from "@/lib/geo";
+import { crimeOpsCounts, loadCrimeSnapshot } from "@/lib/crime-ops";
 import { filterCrime, isDispatch, windowLabel } from "@/lib/crime-window";
 import { prefetchNews } from "@/lib/news-cache";
-import { cn, fmtNum } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { AddressSearch } from "./address-search";
+import { CrimeFirstTips, CrimeOpsStrip } from "./crime-ops-strip";
 import { CrimeShare, FeedPanel } from "./feed-panel";
 import { LayerToggles } from "./layer-toggles";
 import { MarketTicker } from "./market-ticker";
@@ -113,6 +115,7 @@ export function GridApp() {
   const [zips, setZips] = useState<ZipRace[] | null>(null);
   const [pickedZip, setPickedZip] = useState<string | null>(null);
   const [zipFocus, setZipFocus] = useState<{ lon: number; lat: number } | null>(null);
+  const [crimeReady, setCrimeReady] = useState(false);
   const crimeLoaded = useRef(false);
 
   useEffect(() => {
@@ -166,17 +169,16 @@ export function GridApp() {
       });
     };
     const loadSnap = () => {
-      fetch("/crime-tn.json")
-        .then((r) => r.json())
-        .then((d: CrimeIncident[]) => {
+      void loadCrimeSnapshot()
+        .then((d) => {
           if (!live) return;
-          crimeLoaded.current = true;
-          const rows = (Array.isArray(d) ? d : []).filter(
-            (r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch",
-          );
+          const rows = d.filter((r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch");
           setCrime(rows);
+          setCrimeReady(true);
         })
-        .catch(() => undefined);
+        .catch(() => {
+          if (live) setCrimeReady(true);
+        });
     };
     const loadLive = () => {
       if (document.visibilityState === "hidden") return;
@@ -418,8 +420,16 @@ export function GridApp() {
     setCrimeLayers((prev) => ({ ...prev, [kind]: !prev[kind] }));
   }
 
+  function isolateHom() {
+    setCrimeLayers((prev) => ({ ...prev, hom: true, sht: false }));
+  }
+
   function toggleAgency(id: CrimeAgency) {
     setCrimeAgency((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function setAllAgencies() {
+    setCrimeAgency({ mem: true, nash: true, cha: true, rest: true });
   }
 
   const visibleCrime = useMemo(
@@ -432,6 +442,18 @@ export function GridApp() {
         includeLeads: crimeLayers.cad,
       }),
     [crime, crimeWindow, crimeAgency, crimeLayers.cad],
+  );
+
+  const opsCounts = useMemo(
+    () =>
+      crimeReady
+        ? crimeOpsCounts(crime, {
+            window: crimeWindow,
+            agency: crimeAgency,
+            county: selected?.name,
+          })
+        : { hom: 0, sht: 0, lead: 0 },
+    [crime, crimeReady, crimeWindow, crimeAgency, selected?.name],
   );
 
   function toggle(id: LayerId) {
@@ -481,17 +503,20 @@ export function GridApp() {
         <div className="flex items-start justify-between gap-3">
         <div>
           {selected ? (
-            <button
-              type="button"
-              onClick={backToState}
-              className="flex h-11 items-center gap-2 text-fg hover:opacity-80"
-              aria-label="Back to state"
-            >
-              <ArrowLeft className="size-5" />
+            <div className="flex h-11 items-center gap-2">
+              <button
+                type="button"
+                onClick={backToState}
+                className="inline-flex h-8 shrink-0 items-center gap-1 border border-grid/50 bg-grid/10 px-2 font-mono text-[10px] tracking-widest text-grid uppercase hover:bg-grid/20"
+                aria-label="Back to state"
+              >
+                <ArrowLeft className="size-3.5" />
+                STATE
+              </button>
               <span className="font-display text-3xl leading-none font-semibold tracking-wide uppercase">
                 {selected.name}
               </span>
-            </button>
+            </div>
           ) : (
             <div className="flex h-11 items-center gap-3">
               <span className="grid grid-cols-2 gap-px" aria-hidden="true">
@@ -508,10 +533,19 @@ export function GridApp() {
           <p className="font-mono text-xs tracking-widest text-faint uppercase">
             {selected ? `${selected.seat} · ${selected.division}` : "Tennessee"}
           </p>
-          {crime.length ? (
-            <p className="font-mono text-xs tracking-widest text-faint uppercase">
-              {fmtNum(visibleCrime.length)} · {windowLabel(crimeWindow)}
-            </p>
+          {layers.crime || tab === "crime" ? (
+            <>
+              <CrimeOpsStrip
+                ready={crimeReady}
+                hom={opsCounts.hom}
+                sht={opsCounts.sht}
+                lead={opsCounts.lead}
+                windowLabel={windowLabel(crimeWindow)}
+                layers={crimeLayers}
+                onIsolateHom={isolateHom}
+              />
+              <CrimeFirstTips />
+            </>
           ) : null}
           <div className="relative mt-1 flex flex-col items-start">
             <AddressSearch pin={pin} onGo={goToPlace} onClear={clearPin} />
@@ -576,6 +610,8 @@ export function GridApp() {
             onToggleAgency={toggleAgency}
             crimeWindow={crimeWindow}
             onCrimeWindow={setCrimeWindow}
+            onIsolateHom={isolateHom}
+            onAllAgencies={setAllAgencies}
           />
         ) : null}
       </div>
@@ -604,6 +640,7 @@ export function GridApp() {
           onWarmZips={layers.race ? warmZips : undefined}
           focusZip={zipFocus}
           feedHidden={feedSize === "hidden"}
+          onBackToState={selected ? backToState : undefined}
         />
         {feedSize === "hidden" ? (
           <button
@@ -634,6 +671,9 @@ export function GridApp() {
         onHide={() => setFeed("hidden")}
         crime={visibleCrime}
         crimeLayers={crimeLayers}
+        crimeWindow={crimeWindow}
+        crimeAgency={crimeAgency}
+        crimeReady={crimeReady}
         onPickCrime={goToIncident}
         electYear={electYear}
         onElectYear={handleElectYear}
