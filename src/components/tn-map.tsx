@@ -117,19 +117,19 @@ function drawClusterRipples(
 ) {
   ctx.strokeStyle = color;
   if (reduced) {
-    ctx.globalAlpha = 0.42;
-    ctx.lineWidth = 1.35;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.arc(sx, sy, rr * 1.08, 0, Math.PI * 2);
+    ctx.arc(sx, sy, rr * 1.1, 0, Math.PI * 2);
     ctx.stroke();
     return;
   }
   for (let i = 0; i < RIPPLE_RINGS; i++) {
     const phase = ((now / RIPPLE_MS) + i / RIPPLE_RINGS + phaseOffset) % 1;
-    ctx.globalAlpha = (1 - phase) * 0.5;
-    ctx.lineWidth = 1.55;
+    ctx.globalAlpha = (1 - phase) * 0.7;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(sx, sy, rr * (0.55 + phase * 0.7), 0, Math.PI * 2);
+    ctx.arc(sx, sy, rr * (0.5 + phase * 0.85), 0, Math.PI * 2);
     ctx.stroke();
   }
 }
