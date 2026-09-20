@@ -26,7 +26,7 @@ export function CrimeOpsStrip({
   const sum = hom + sht;
 
   return (
-    <div data-crime-ops className="mt-1">
+    <div data-crime-ops>
       <div className="flex flex-wrap items-center gap-1">
         <span className="inline-flex h-6 items-center gap-1 border border-hot/40 bg-hot/10 px-1.5 font-mono text-[10px] tracking-widest text-hot uppercase">
           HOM {ready ? fmtNum(hom) : <Skel className="bg-hot/20" />}

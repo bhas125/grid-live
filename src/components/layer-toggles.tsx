@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
-  CrimeAgency,
-  CrimeAgencies,
   CrimeKind,
   CrimeLayers,
   CrimeWindow,
@@ -12,8 +10,7 @@ import type {
   RaceLayers,
   RaceSlice,
 } from "@/data/types";
-import { AGENCY_META, CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
-import { allAgenciesOn } from "@/lib/crime-window";
+import { CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
 
 const ITEMS: { id: LayerId; label: string }[] = [
   { id: "interstates", label: "Roads" },
@@ -33,12 +30,9 @@ export function LayerToggles({
   onToggleRace,
   crimeLayers,
   onToggleCrime,
-  crimeAgency,
-  onToggleAgency,
   crimeWindow,
   onCrimeWindow,
   onIsolateHom,
-  onAllAgencies,
 }: {
   layers: Layers;
   onToggle: (id: LayerId) => void;
@@ -46,12 +40,9 @@ export function LayerToggles({
   onToggleRace: (id: RaceSlice) => void;
   crimeLayers: CrimeLayers;
   onToggleCrime: (id: CrimeKind) => void;
-  crimeAgency: CrimeAgencies;
-  onToggleAgency: (id: CrimeAgency) => void;
   crimeWindow: CrimeWindow;
   onCrimeWindow: (id: CrimeWindow) => void;
   onIsolateHom?: () => void;
-  onAllAgencies?: () => void;
   zoomed?: boolean;
 }) {
   const [raceOpen, setRaceOpen] = useState(layers.race);
@@ -168,43 +159,6 @@ export function LayerToggles({
                 </button>
               );
             })}
-            <span className="mx-0.5 h-4 w-px bg-line" />
-            {AGENCY_META.map((item) => {
-              const on = crimeAgency[item.id];
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onToggleAgency(item.id)}
-                  aria-pressed={on}
-                  title={item.title}
-                  className={cn(
-                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
-                    on
-                      ? "border-steel bg-steel/15 text-steel"
-                      : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
-                  )}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-            {onAllAgencies ? (
-              <button
-                type="button"
-                onClick={onAllAgencies}
-                aria-pressed={allAgenciesOn(crimeAgency)}
-                title="Tennessee statewide · all agencies"
-                className={cn(
-                  "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
-                  allAgenciesOn(crimeAgency)
-                    ? "border-grid bg-grid/15 text-grid"
-                    : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
-                )}
-              >
-                ALL
-              </button>
-            ) : null}
           </div>
         </>
       ) : null}

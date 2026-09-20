@@ -5,7 +5,7 @@ import roadsJson from "@/data/roads.json";
 import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
 import { isFresh48 } from "@/lib/crime-fresh";
-import { clusterByCounty, clusterXY } from "@/lib/crime-cluster";
+import { clusterByCounty, clusterRadius, clusterRMax, clusterXY } from "@/lib/crime-cluster";
 import {
   crimeLabel,
   inferGeo,
@@ -321,6 +321,40 @@ function deadReckon(f: Flight, now: number) {
   };
 }
 
+const RIPPLE_MS = 2000;
+const RIPPLE_RINGS = 3;
+
+/** Motion-style loading ripple: 3 expanding/fading rings, 2s loop, behind the count. */
+function drawClusterRipple(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  r: number,
+  color: string,
+  t: number,
+  reduced: boolean,
+) {
+  if (reduced) {
+    ctx.beginPath();
+    ctx.arc(sx, sy, r + 3.2, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.34;
+    ctx.stroke();
+    return;
+  }
+  for (let i = 0; i < RIPPLE_RINGS; i++) {
+    const p = (t + i / RIPPLE_RINGS) % 1;
+    const rad = r * (1 + 0.95 * p);
+    ctx.beginPath();
+    ctx.arc(sx, sy, rad, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(0.75, 1.65 * (1 - p));
+    ctx.globalAlpha = 0.44 * (1 - p);
+    ctx.stroke();
+  }
+}
+
 function drawPlane(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -519,6 +553,7 @@ export function TnMap({
   const geoRef = useRef(geo);
   geoRef.current = geo;
   const coarseRef = useRef(false);
+  const reduceMotionRef = useRef(false);
 
   const project = useMemo(() => (geo ? makeProject(geo, MAP_W, MAP_H) : null), [geo]);
   const unproject = useMemo(() => (geo ? makeUnproject(geo, MAP_W, MAP_H) : null), [geo]);
@@ -1052,6 +1087,7 @@ export function TnMap({
     const cols = Math.max(1, Math.ceil(w / cell));
     const seen = new Uint8Array(cols * Math.max(1, Math.ceil(h / cell)));
     const record = !busy.current;
+    let clusterRipple = false;
 
     const stamp = (sx: number, sy: number, force: boolean) => {
       const gi = ((sy / cell) | 0) * cols + ((sx / cell) | 0);
@@ -1248,9 +1284,19 @@ export function TnMap({
               ? clusterXY(plot, 14)
               : clusterXY(plot, 7)
           : clusterXY(plot, 5.8);
+        let nMax = 1;
+        for (const g of groups) if (g.n > nMax) nMax = g.n;
+        const rMax = clusterRMax(!zoomedNow, w, h);
+        const rMin = zoomedNow ? 8 : 10;
+        const reduced = reduceMotionRef.current;
+        const loopT = (performance.now() % RIPPLE_MS) / RIPPLE_MS;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+        const baseFont =
+          !zoomedNow && stateZoom < 1.18
+            ? "700 11px 'IBM Plex Mono', ui-monospace, monospace"
+            : "700 10px 'IBM Plex Mono', ui-monospace, monospace";
+        ctx.font = baseFont;
         for (const g of groups) {
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
@@ -1262,15 +1308,17 @@ export function TnMap({
           if (!stamp(sx, sy, true)) continue;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
           const shtN = g.n - homN;
-          let rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
-          if (homN) rr = Math.max(rr, !zoomedNow && stateZoom < 1.18 ? 12 : 8.5);
+          const rr = clusterRadius(g.n, nMax, rMax, rMin);
+          if (!reduced) clusterRipple = true;
+          const rippleCol = homN ? "#ff4d4d" : "#ffb347";
+          drawClusterRipple(ctx, sx, sy, rr, rippleCol, loopT, reduced);
           const tau = Math.PI * 2;
           const start = -Math.PI / 2;
           const ringW = homN && shtN ? 3.2 : 2.4;
           ctx.beginPath();
           ctx.arc(sx, sy, rr, 0, tau);
           ctx.fillStyle = "#0c121c";
-          ctx.globalAlpha = overRace ? 0.62 : 0.55;
+          ctx.globalAlpha = overRace ? 0.78 : 0.86;
           ctx.fill();
           ctx.lineCap = "butt";
           if (shtN) {
@@ -1290,14 +1338,14 @@ export function TnMap({
             ctx.arc(sx, sy, rr - ringW * 0.45, a0, a0 + Math.max((homN / g.n) * tau, 0.12));
             ctx.stroke();
           }
-          ctx.globalAlpha = 0.95;
+          ctx.globalAlpha = 1;
           if (homN && shtN && rr >= 14) {
-            ctx.font = "600 8px 'IBM Plex Mono', ui-monospace, monospace";
+            ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
             ctx.fillStyle = "#ff4d4d";
             ctx.fillText(String(homN), sx, sy - 4);
             ctx.fillStyle = "#ffb347";
             ctx.fillText(String(shtN), sx, sy + 6);
-            ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+            ctx.font = baseFont;
           } else {
             ctx.fillStyle = "#e8f6ff";
             ctx.fillText(String(g.n), sx, sy + 0.5);
@@ -1492,7 +1540,7 @@ export function TnMap({
       }
       ctx.restore();
     }
-    if (flightsOn) drawRaf.current = requestAnimationFrame(drawDots);
+    if (flightsOn || clusterRipple) drawRaf.current = requestAnimationFrame(drawDots);
   }
 
   useEffect(() => {
@@ -1550,9 +1598,27 @@ export function TnMap({
     } catch {
       /* ignore */
     }
+    let reduceMq: MediaQueryList | null = null;
+    const setReduce = () => {
+      reduceMotionRef.current = !!reduceMq?.matches;
+    };
+    try {
+      reduceMq = window.matchMedia("(prefers-reduced-motion: reduce)");
+      setReduce();
+      reduceMq.addEventListener("change", setReduce);
+    } catch {
+      /* ignore */
+    }
     const ro = new ResizeObserver(apply);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      try {
+        reduceMq?.removeEventListener("change", setReduce);
+      } catch {
+        /* ignore */
+      }
+    };
   }, []);
 
   function animateTo(next: ViewBox) {

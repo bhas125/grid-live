@@ -5,7 +5,6 @@ import officialsJson from "@/data/officials.json";
 import type {
   Alert,
   County,
-  CrimeAgencies,
   CrimeIncident,
   CrimeLayers,
   CrimeWindow,
@@ -226,8 +225,6 @@ function CrimeFeed({
   ready,
   crimeWindow,
   onCrimeWindow,
-  crimeAgency,
-  onAllAgencies,
 }: {
   county: County | null;
   incidents: CrimeIncident[];
@@ -236,8 +233,6 @@ function CrimeFeed({
   ready: boolean;
   crimeWindow: CrimeWindow;
   onCrimeWindow?: (id: CrimeWindow) => void;
-  crimeAgency: CrimeAgencies;
-  onAllAgencies?: () => void;
 }) {
   const [shownHom, setShownHom] = useState(PAGE);
   const [shownSht, setShownSht] = useState(PAGE);
@@ -294,7 +289,6 @@ function CrimeFeed({
   const hint = empty
     ? crimeEmptyHint({
         window: crimeWindow,
-        agency: crimeAgency,
         county: county?.name ?? null,
       })
     : null;
@@ -333,15 +327,6 @@ function CrimeFeed({
             <button
               type="button"
               onClick={() => onCrimeWindow("48h")}
-              className="chip-press mt-2 h-6 border border-grid bg-grid/15 px-1.5 font-mono text-[10px] tracking-widest text-grid uppercase"
-            >
-              {hint.actionLabel}
-            </button>
-          ) : null}
-          {hint.action === "all" && onAllAgencies ? (
-            <button
-              type="button"
-              onClick={onAllAgencies}
               className="chip-press mt-2 h-6 border border-grid bg-grid/15 px-1.5 font-mono text-[10px] tracking-widest text-grid uppercase"
             >
               {hint.actionLabel}
@@ -765,8 +750,6 @@ export function FeedPanel({
   crimeReady = true,
   crimeWindow = "ytd",
   onCrimeWindow,
-  crimeAgency,
-  onAllAgencies,
 }: {
   county: County | null;
   tab: TabId;
@@ -791,8 +774,6 @@ export function FeedPanel({
   crimeReady?: boolean;
   crimeWindow?: CrimeWindow;
   onCrimeWindow?: (id: CrimeWindow) => void;
-  crimeAgency?: CrimeAgencies;
-  onAllAgencies?: () => void;
 }) {
   const extra: NewsItem[] = (county ? alerts.filter((a) => a.counties.includes(county.name)) : alerts).map(
     (a) => ({
@@ -912,8 +893,6 @@ export function FeedPanel({
             ready={crimeReady}
             crimeWindow={crimeWindow}
             onCrimeWindow={onCrimeWindow}
-            crimeAgency={crimeAgency ?? { mem: true, nash: true, cha: true, rest: true }}
-            onAllAgencies={onAllAgencies}
           />
         ) : null}
         {crimeLayers.reg ? <SorFeed county={county} active={tab === "crime" && crimeLayers.reg} /> : null}

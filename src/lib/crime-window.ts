@@ -126,19 +126,21 @@ function staleNewsStory(c: CrimeIncident) {
   return /\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t);
 }
 
-/** Ops-strip totals for the active time + agency filters (type chips stay a legend). */
-export function countCrimeOps(
-  rows: CrimeIncident[],
-  win: CrimeWindow,
-  agency?: Record<CrimeAgency, boolean>,
-  now = Date.now(),
-) {
+/** Crime map is always statewide — metro MEM/NASH/CHAT/REST tiles are gone. */
+export const STATEWIDE_AGENCY: Record<CrimeAgency, boolean> = {
+  mem: true,
+  nash: true,
+  cha: true,
+  rest: true,
+};
+
+/** Statewide ops-strip totals for the active time window. */
+export function countCrimeOps(rows: CrimeIncident[], win: CrimeWindow, now = Date.now()) {
   let hom = 0;
   let sht = 0;
   let lead = 0;
   for (const c of rows) {
     if (isDispatch(c)) continue;
-    if (agency && !agency[agencyOf(c)]) continue;
     if (isLead(c)) {
       if (isFresh48(c.date, now)) lead += 1;
       continue;
@@ -153,25 +155,13 @@ export function countCrimeOps(
   return { hom, sht, lead };
 }
 
-export function restOnlyAgencies(agency: Record<CrimeAgency, boolean>) {
-  return agency.rest && !agency.mem && !agency.nash && !agency.cha;
-}
-
-export function allAgenciesOn(agency: Record<CrimeAgency, boolean>) {
-  return agency.mem && agency.nash && agency.cha && agency.rest;
-}
-
 export type CrimeEmptyHint = {
   line: string;
-  action?: "48h" | "all";
+  action?: "48h";
   actionLabel?: string;
 };
 
-export function crimeEmptyHint(opts: {
-  window: CrimeWindow;
-  agency: Record<CrimeAgency, boolean>;
-  county: string | null;
-}): CrimeEmptyHint {
+export function crimeEmptyHint(opts: { window: CrimeWindow; county: string | null }): CrimeEmptyHint {
   if (opts.window === "today") {
     return {
       line: "No incidents in TODAY · try 48H",
@@ -179,17 +169,8 @@ export function crimeEmptyHint(opts: {
       actionLabel: "48H",
     };
   }
-  if (restOnlyAgencies(opts.agency)) {
-    return {
-      line: "REST has no metro incidents in this window.",
-      action: "all",
-      actionLabel: "ALL",
-    };
-  }
   if (opts.county) {
-    return {
-      line: `No incidents in ${opts.county} for this filter.`,
-    };
+    return { line: `No incidents in ${opts.county} for this filter.` };
   }
   return { line: "No incidents in this filter." };
 }

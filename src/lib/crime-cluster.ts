@@ -67,3 +67,19 @@ export function clusterByCounty<T extends Clusterable & { county?: string }>(
   if (!rest.length) return out;
   return out.concat(clusterXY(rest, opts.restCell));
 }
+
+/**
+ * Screen-px cluster radius. Discrete in n (no tween on pan / filter).
+ * State: r = clamp(10, rMax * sqrt(n / nMax), rMax) with rMax ≤ 28.
+ * County: rMax ≤ 16.
+ */
+export function clusterRMax(stateView: boolean, mapW: number, mapH: number) {
+  const short = Math.max(1, Math.min(mapW, mapH));
+  if (!stateView) return Math.min(16, Math.max(12, short * 0.055));
+  return Math.min(28, Math.max(16, short * 0.08));
+}
+
+export function clusterRadius(n: number, nMax: number, rMax: number, rMin = 10) {
+  const t = Math.sqrt(Math.max(1, n) / Math.max(1, nMax));
+  return Math.min(rMax, Math.max(rMin, rMax * t));
+}
