@@ -420,7 +420,10 @@ export function GridApp() {
   }
 
   function isolateHom() {
-    setCrimeLayers((prev) => ({ ...prev, hom: true, sht: false }));
+    setCrimeLayers((prev) => {
+      if (prev.hom && !prev.sht) return { ...prev, sht: true };
+      return { ...prev, hom: true, sht: false };
+    });
   }
 
   const visibleCrime = useMemo(

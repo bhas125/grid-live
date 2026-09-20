@@ -6,9 +6,37 @@ import type { CrimeLayers } from "@/data/types";
 const TIPS_KEY = "grid-ux-tips-v1";
 
 const TIPS = [
-  "Deselect SHT to isolate HOM",
+  "Tap Isolate HOM to hide SHT",
   "Tap a county fill or feed row to drill",
 ] as const;
+
+export function IsolateHomButton({
+  isolated,
+  onToggle,
+  className,
+}: {
+  isolated: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={isolated}
+      aria-label={isolated ? "Show shootings" : "Isolate homicides"}
+      className={cn(
+        "h-6 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+        isolated
+          ? "border-hot bg-hot/20 text-hot"
+          : "border-hot/50 bg-hot/10 text-hot hover:bg-hot/20",
+        className,
+      )}
+    >
+      {isolated ? "Show SHT" : "Isolate HOM"}
+    </button>
+  );
+}
 
 export function CrimeOpsStrip({
   ready,
@@ -50,15 +78,11 @@ export function CrimeOpsStrip({
           HOM · SHT · LEAD
         </span>
       )}
-      {layers.hom && layers.sht ? (
-        <button
-          type="button"
-          onClick={onIsolateHom}
-          className="ml-auto h-6 border border-hot/50 bg-hot/10 px-1.5 font-mono text-[10px] tracking-widest text-hot uppercase hover:bg-hot/20"
-        >
-          HOM only
-        </button>
-      ) : null}
+      <IsolateHomButton
+        isolated={layers.hom && !layers.sht}
+        onToggle={onIsolateHom}
+        className="ml-auto"
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import type {
   RaceSlice,
 } from "@/data/types";
 import { CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
+import { IsolateHomButton } from "./crime-ops-strip";
 
 const ITEMS: { id: LayerId; label: string }[] = [
   { id: "interstates", label: "Roads" },
@@ -115,14 +116,8 @@ export function LayerToggles({
                 </button>
               );
             })}
-            {crimeLayers.hom && crimeLayers.sht && onIsolateHom ? (
-              <button
-                type="button"
-                onClick={onIsolateHom}
-                className="h-6 min-w-0 shrink-0 border border-hot/50 bg-hot/10 px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap text-hot uppercase hover:bg-hot/20"
-              >
-                HOM only
-              </button>
+            {onIsolateHom ? (
+              <IsolateHomButton isolated={crimeLayers.hom && !crimeLayers.sht} onToggle={onIsolateHom} />
             ) : null}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">

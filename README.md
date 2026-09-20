@@ -18,7 +18,7 @@ Included in this preview:
 
 - Persistent HOM / SHT / LEAD ops bar **under the map** (no flash of zeros on load)
 - First-run dismissible tips (localStorage)
-- **HOM only** chip (clears SHT)
+- **Isolate HOM** action (always visible on Crime; **Show SHT** to restore)
 - Always-visible **STATE** when a county is drilled
 - Crime pin/cluster hits beat Roads; larger phone tap targets
 - Motion-style ripple clusters (HOM red / SHT amber) with a center count
