@@ -124,9 +124,9 @@ export function hexCenter(q: number, r: number, size: number): { x: number; y: n
 
 /** Compact on-screen hex radius. Count does not grow the cell. */
 export function hexScreenRadius(mapW: number, opts?: { rPx?: number; rFrac?: number }): number {
-  const rPx = opts?.rPx ?? 11;
-  const rFrac = opts?.rFrac ?? 0.014;
-  return Math.max(8, Math.min(rPx, mapW * rFrac));
+  const rPx = opts?.rPx ?? 12;
+  const rFrac = opts?.rFrac ?? 0.015;
+  return Math.max(9, Math.min(rPx, mapW * rFrac));
 }
 
 /**

@@ -30,9 +30,9 @@ function hexCenter(q, r, size) {
 }
 
 function hexScreenRadius(mapW, opts = {}) {
-  const rPx = opts.rPx ?? 11;
-  const rFrac = opts.rFrac ?? 0.014;
-  return Math.max(8, Math.min(rPx, mapW * rFrac));
+  const rPx = opts.rPx ?? 12;
+  const rFrac = opts.rFrac ?? 0.015;
+  return Math.max(9, Math.min(rPx, mapW * rFrac));
 }
 
 function hexBin(pts, size) {
@@ -89,7 +89,7 @@ test("nearby points share a hex; distant points do not", () => {
 test("hex cells stay compact vs map width", () => {
   const phone = hexScreenRadius(360);
   const desktop = hexScreenRadius(1200);
-  assert.ok(phone <= 11);
-  assert.equal(desktop, 11);
+  assert.ok(phone <= 12);
+  assert.equal(desktop, 12);
   assert.ok(phone / 360 < 0.04, "hex must not cover a large slice of the map");
 });

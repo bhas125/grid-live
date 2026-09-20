@@ -1324,33 +1324,41 @@ export function TnMap({
           const majority = homN >= shtN ? "#ff4d4d" : "#ffb347";
           if (hexView) {
             ctx.save();
+            ctx.lineJoin = "miter";
+            ctx.miterLimit = 2;
             pathHex(ctx, sx, sy, hexR);
             ctx.clip();
             if (homN && shtN) {
               ctx.fillStyle = "#ffb347";
-              ctx.globalAlpha = overRace ? 0.82 : 0.88;
+              ctx.globalAlpha = overRace ? 0.86 : 0.92;
               ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2);
               ctx.fillStyle = "#ff4d4d";
               ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2 * (homN / g.n));
             } else {
               ctx.fillStyle = majority;
-              ctx.globalAlpha = overRace ? 0.82 : 0.9;
+              ctx.globalAlpha = overRace ? 0.86 : 0.94;
               ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2);
             }
             ctx.restore();
+            ctx.lineJoin = "miter";
+            ctx.miterLimit = 2;
             pathHex(ctx, sx, sy, hexR);
-            ctx.globalAlpha = 0.95;
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 1.35;
+            ctx.strokeStyle = "#0a0e14";
+            ctx.stroke();
+            pathHex(ctx, sx, sy, hexR - 0.6);
             ctx.lineWidth = 1.05;
             ctx.strokeStyle = majority;
             ctx.stroke();
             const label = shortCount(g.n);
             ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
-            const tw = ctx.measureText(label).width;
-            ctx.fillStyle = "rgba(10,14,20,0.72)";
-            ctx.globalAlpha = 1;
-            ctx.fillRect(sx - tw / 2 - 2.5, sy - 5.5, tw + 5, 11);
+            ctx.shadowColor = "rgba(10,14,20,0.92)";
+            ctx.shadowBlur = 3;
             ctx.fillStyle = "#e8f6ff";
             ctx.fillText(label, sx, sy + 0.5);
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = "transparent";
             if (homN && shtN) {
               const badge = shortCount(homN);
               ctx.font = "700 7px 'IBM Plex Mono', ui-monospace, monospace";
