@@ -2312,7 +2312,7 @@ export function TnMap({
             onBackToState?.();
           }}
           aria-label="Back to state"
-          className="absolute top-2 left-2 z-20 h-8 border border-grid bg-elevated/95 px-2.5 font-mono text-[10px] tracking-widest text-grid uppercase shadow-glow"
+          className="absolute top-2 left-2 z-40 h-8 border border-grid bg-elevated/95 px-2.5 font-mono text-[10px] tracking-widest text-grid uppercase shadow-glow"
         >
           STATE
         </button>

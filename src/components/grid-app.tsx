@@ -501,17 +501,27 @@ export function GridApp() {
         <div className="flex items-start justify-between gap-3">
         <div>
           {selected ? (
-            <button
-              type="button"
-              onClick={backToState}
-              className="flex h-11 items-center gap-2 text-fg hover:opacity-80"
-              aria-label="Back to state"
-            >
-              <ArrowLeft className="size-5" />
-              <span className="font-display text-3xl leading-none font-semibold tracking-wide uppercase">
-                {selected.name}
-              </span>
-            </button>
+            <div className="flex h-11 items-center gap-2">
+              <button
+                type="button"
+                onClick={backToState}
+                aria-label="Back to state"
+                className="h-7 shrink-0 border border-grid bg-grid/15 px-2 font-mono text-[10px] tracking-widest text-grid uppercase hover:bg-grid/25"
+              >
+                STATE
+              </button>
+              <button
+                type="button"
+                onClick={backToState}
+                className="flex min-w-0 items-center gap-2 text-fg hover:opacity-80"
+                aria-label={`Back to state from ${selected.name}`}
+              >
+                <ArrowLeft className="size-5 shrink-0" />
+                <span className="font-display text-3xl leading-none font-semibold tracking-wide uppercase">
+                  {selected.name}
+                </span>
+              </button>
+            </div>
           ) : (
             <div className="flex h-11 items-center gap-3">
               <span className="grid grid-cols-2 gap-px" aria-hidden="true">
