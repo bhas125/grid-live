@@ -5,7 +5,7 @@ import roadsJson from "@/data/roads.json";
 import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
 import { isFresh48 } from "@/lib/crime-fresh";
-import { clusterByCounty, clusterXY } from "@/lib/crime-cluster";
+import { clusterByCounty, clusterRadius, clusterXY } from "@/lib/crime-cluster";
 import {
   crimeLabel,
   inferGeo,
@@ -100,6 +100,38 @@ function storyHref(c: CrimeIncident, names?: CrimeNames | null) {
   if (c.href) return c.href;
   if (names?.href && (names.victims.length || names.charged.length)) return names.href;
   return null;
+}
+
+const RIPPLE_MS = 1800;
+const RIPPLE_RINGS = 3;
+
+function drawClusterRipples(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  rr: number,
+  color: string,
+  now: number,
+  reduced: boolean,
+  phaseOffset = 0,
+) {
+  ctx.strokeStyle = color;
+  if (reduced) {
+    ctx.globalAlpha = 0.42;
+    ctx.lineWidth = 1.35;
+    ctx.beginPath();
+    ctx.arc(sx, sy, rr * 1.08, 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+  for (let i = 0; i < RIPPLE_RINGS; i++) {
+    const phase = ((now / RIPPLE_MS) + i / RIPPLE_RINGS + phaseOffset) % 1;
+    ctx.globalAlpha = (1 - phase) * 0.5;
+    ctx.lineWidth = 1.55;
+    ctx.beginPath();
+    ctx.arc(sx, sy, rr * (0.55 + phase * 0.7), 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 const TIP_W = 224;
@@ -492,6 +524,8 @@ export function TnMap({
   const skipSelect = useRef(false);
   const stealClick = useRef(false);
   const coarsePointer = useRef(false);
+  const reduceMotion = useRef(false);
+  const rippleFrozen = useRef(0);
   const pan = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
   const [alpr, setAlpr] = useState<AlprPoint[]>([]);
   const [cams, setCams] = useState<TrafficCam[]>([]);
@@ -682,13 +716,19 @@ export function TnMap({
   }, [selected, layers.p24]);
 
   useEffect(() => {
-    const mq = window.matchMedia("(pointer: coarse)");
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const apply = () => {
-      coarsePointer.current = mq.matches;
+      coarsePointer.current = coarse.matches;
+      reduceMotion.current = motion.matches;
     };
     apply();
-    mq.addEventListener("change", apply);
-    return () => mq.removeEventListener("change", apply);
+    coarse.addEventListener("change", apply);
+    motion.addEventListener("change", apply);
+    return () => {
+      coarse.removeEventListener("change", apply);
+      motion.removeEventListener("change", apply);
+    };
   }, []);
 
   const paths = useMemo(() => {
@@ -1055,6 +1095,7 @@ export function TnMap({
     const cols = Math.max(1, Math.ceil(w / cell));
     const seen = new Uint8Array(cols * Math.max(1, Math.ceil(h / cell)));
     const record = !busy.current;
+    let clusterRipple = false;
 
     const stamp = (sx: number, sy: number, force: boolean) => {
       const gi = ((sy / cell) | 0) * cols + ((sx / cell) | 0);
@@ -1248,46 +1289,42 @@ export function TnMap({
             continue;
           }
           if (!stamp(sx, sy, true)) continue;
+          clusterRipple = true;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
           const shtN = g.n - homN;
           const counties = new Set(g.items.map((it) => it.county).filter(Boolean));
           const clusterCounty = counties.size === 1 ? [...counties][0] : undefined;
-          const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
-          const homFrac = g.n ? homN / g.n : 0;
+          const rr = clusterRadius(g.n, w);
+          const now = busy.current ? rippleFrozen.current : performance.now();
+          if (!busy.current) rippleFrozen.current = now;
+          const reduced = reduceMotion.current;
+          if (shtN) drawClusterRipples(ctx, sx, sy, rr, "#ffb347", now, reduced, 0);
+          if (homN) drawClusterRipples(ctx, sx, sy, rr, "#ff4d4d", now, reduced, shtN ? 0.33 : 0);
           ctx.beginPath();
           ctx.fillStyle = "#0a0e14";
-          ctx.globalAlpha = overRace ? 0.55 : !zoomedNow && stateZoom < 1.18 ? 0.38 : 0.3;
-          ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+          ctx.globalAlpha = overRace ? 0.72 : 0.62;
+          ctx.arc(sx, sy, Math.max(6, rr * 0.62), 0, Math.PI * 2);
           ctx.fill();
-          ctx.lineWidth = overRace ? 2.4 : 2.1;
-          ctx.globalAlpha = overRace ? 0.95 : 0.88;
-          if (shtN) {
-            ctx.beginPath();
-            ctx.strokeStyle = "#ffb347";
-            ctx.arc(sx, sy, rr, -Math.PI / 2 + homFrac * Math.PI * 2, -Math.PI / 2 + Math.PI * 2);
-            ctx.stroke();
-          }
-          if (homN) {
-            ctx.beginPath();
-            ctx.strokeStyle = "#ff4d4d";
-            ctx.arc(sx, sy, rr, -Math.PI / 2, -Math.PI / 2 + homFrac * Math.PI * 2);
-            ctx.stroke();
-          }
-          ctx.globalAlpha = 0.95;
+          ctx.lineWidth = 1.2;
+          ctx.globalAlpha = 0.9;
+          ctx.strokeStyle = homN >= shtN ? "#ff4d4d" : "#ffb347";
+          ctx.stroke();
+          ctx.globalAlpha = 0.96;
           ctx.fillStyle = "#e8f6ff";
+          ctx.font = rr >= 12 ? "700 10px 'IBM Plex Mono', ui-monospace, monospace" : "700 9px 'IBM Plex Mono', ui-monospace, monospace";
           ctx.fillText(String(g.n), sx, sy + 0.5);
-          if (homN) {
+          if (homN && shtN) {
             const badge = String(homN);
             ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
             const bw = Math.max(11, ctx.measureText(badge).width + 5);
-            const bx = sx + rr * 0.55;
-            const by = sy - rr * 0.85;
+            const bx = sx + rr * 0.42;
+            const by = sy - rr * 0.78;
             ctx.fillStyle = "#ff4d4d";
             ctx.fillRect(bx, by, bw, 11);
             ctx.fillStyle = "#fff5f5";
             ctx.fillText(badge, bx + bw / 2, by + 6);
-            ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
           }
+          ctx.font = "600 9px 'IBM Plex Mono', ui-monospace, monospace";
           if (record) {
             const tap = coarsePointer.current ? 10 : 0;
             hits.current.push({
@@ -1295,7 +1332,7 @@ export function TnMap({
               lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
-              r: rr + 4 + tap,
+              r: rr * 1.2 + 4 + tap,
               cluster: { x: g.x, y: g.y, n: g.n, county: clusterCounty },
             });
           }
@@ -1475,7 +1512,9 @@ export function TnMap({
       }
       ctx.restore();
     }
-    if (flightsOn) drawRaf.current = requestAnimationFrame(drawDots);
+    if (flightsOn || (clusterRipple && !reduceMotion.current && !busy.current)) {
+      drawRaf.current = requestAnimationFrame(drawDots);
+    }
   }
 
   useEffect(() => {

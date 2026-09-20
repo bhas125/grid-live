@@ -16,14 +16,16 @@ Use the **Vercel Preview URL on the PR** — not production, not `grid.blastpad.
 
 Included in this preview:
 
-- Persistent HOM / SHT / LEAD ops strip (no flash of zeros on load)
+- Persistent HOM / SHT / LEAD ops bar **under the map** (no flash of zeros on load)
 - First-run dismissible tips (localStorage)
 - **HOM only** chip (clears SHT)
 - Always-visible **STATE** when a county is drilled
 - Crime pin/cluster hits beat Roads; larger phone tap targets
-- Dual-ring clusters with a HOM badge so SHT does not drown HOM
-- TODAY / REST empty-state one-liners and a **TN** (all-agencies) chip
+- Motion-style ripple clusters (HOM red / SHT amber) with a center count
+- Clamped `√n` bubble scale so YTD metros cannot eat the map
+- TODAY empty-state one-liner
 - Light 150ms popup scale/opacity — no Lottie
+- Metro agency chips (MEM / NASH / CHAT / REST) removed
 
 Do not promote this preview to production. Palette, Lead purple, YTD default, gate, and the crime merge pipeline are unchanged.
 

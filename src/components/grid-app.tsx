@@ -5,7 +5,6 @@ import type {
   Alert,
   County,
   CrimeAgencies,
-  CrimeAgency,
   CrimeIncident,
   CrimeKind,
   CrimeLayers,
@@ -103,7 +102,7 @@ export function GridApp() {
   const [briefs, setBriefs] = useState<Record<string, string>>({});
   const [crime, setCrime] = useState<CrimeIncident[]>([]);
   const [crimeLayers, setCrimeLayers] = useState<CrimeLayers>(DEFAULT_CRIME);
-  const [crimeAgency, setCrimeAgency] = useState<CrimeAgencies>(DEFAULT_AGENCY);
+  const crimeAgency = DEFAULT_AGENCY;
   const [crimeWindow, setCrimeWindow] = useState<CrimeWindow>("ytd");
   const [feedSize, setFeedSize] = useState<FeedSize>("dock");
   const [layersOpen, setLayersOpen] = useState(true);
@@ -424,14 +423,6 @@ export function GridApp() {
     setCrimeLayers((prev) => ({ ...prev, hom: true, sht: false }));
   }
 
-  function toggleAgency(id: CrimeAgency) {
-    setCrimeAgency((prev) => ({ ...prev, [id]: !prev[id] }));
-  }
-
-  function setAllAgencies() {
-    setCrimeAgency({ mem: true, nash: true, cha: true, rest: true });
-  }
-
   const visibleCrime = useMemo(
     () =>
       filterCrime(crime, {
@@ -533,20 +524,6 @@ export function GridApp() {
           <p className="font-mono text-xs tracking-widest text-faint uppercase">
             {selected ? `${selected.seat} · ${selected.division}` : "Tennessee"}
           </p>
-          {layers.crime || tab === "crime" ? (
-            <>
-              <CrimeOpsStrip
-                ready={crimeReady}
-                hom={opsCounts.hom}
-                sht={opsCounts.sht}
-                lead={opsCounts.lead}
-                windowLabel={windowLabel(crimeWindow)}
-                layers={crimeLayers}
-                onIsolateHom={isolateHom}
-              />
-              <CrimeFirstTips />
-            </>
-          ) : null}
           <div className="relative mt-1 flex flex-col items-start">
             <AddressSearch pin={pin} onGo={goToPlace} onClear={clearPin} />
             <button
@@ -606,12 +583,9 @@ export function GridApp() {
             onToggleRace={toggleRace}
             crimeLayers={crimeLayers}
             onToggleCrime={toggleCrime}
-            crimeAgency={crimeAgency}
-            onToggleAgency={toggleAgency}
             crimeWindow={crimeWindow}
             onCrimeWindow={setCrimeWindow}
             onIsolateHom={isolateHom}
-            onAllAgencies={setAllAgencies}
           />
         ) : null}
       </div>
@@ -654,6 +628,20 @@ export function GridApp() {
           </button>
         ) : null}
       </div>
+      {layers.crime || tab === "crime" ? (
+        <div className="shrink-0 border-t border-line bg-bg-2">
+          <CrimeOpsStrip
+            ready={crimeReady}
+            hom={opsCounts.hom}
+            sht={opsCounts.sht}
+            lead={opsCounts.lead}
+            windowLabel={windowLabel(crimeWindow)}
+            layers={crimeLayers}
+            onIsolateHom={isolateHom}
+          />
+          <CrimeFirstTips />
+        </div>
+      ) : null}
       {selected && layers.crime && feedSize !== "hidden" ? (
         <CrimeShare county={selected} incidents={visibleCrime} layers={crimeLayers} />
       ) : null}

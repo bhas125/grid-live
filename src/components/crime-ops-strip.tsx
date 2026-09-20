@@ -28,22 +28,25 @@ export function CrimeOpsStrip({
   onIsolateHom: () => void;
 }) {
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1" data-crime-ops>
-      <span className="font-mono text-[10px] tracking-widest text-faint uppercase">{windowLabel}</span>
+    <div
+      className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5"
+      data-crime-ops
+    >
+      <span className="font-mono text-[11px] tracking-widest text-faint uppercase">{windowLabel}</span>
       {ready ? (
         <>
-          <span className={cn("font-mono text-[10px] tracking-widest uppercase", layers.hom ? "text-hot" : "text-faint")}>
+          <span className={cn("font-mono text-[13px] tracking-widest tabular uppercase", layers.hom ? "text-hot" : "text-faint")}>
             HOM {fmtNum(hom)}
           </span>
-          <span className={cn("font-mono text-[10px] tracking-widest uppercase", layers.sht ? "text-watch" : "text-faint")}>
+          <span className={cn("font-mono text-[13px] tracking-widest tabular uppercase", layers.sht ? "text-watch" : "text-faint")}>
             SHT {fmtNum(sht)}
           </span>
-          <span className={cn("font-mono text-[10px] tracking-widest uppercase", layers.cad ? "text-lead" : "text-faint")}>
+          <span className={cn("font-mono text-[13px] tracking-widest tabular uppercase", layers.cad ? "text-lead" : "text-faint")}>
             LEAD {fmtNum(lead)}
           </span>
         </>
       ) : (
-        <span className="font-mono text-[10px] tracking-widest text-faint uppercase">
+        <span className="font-mono text-[13px] tracking-widest text-faint uppercase">
           HOM · SHT · LEAD
         </span>
       )}
@@ -51,7 +54,7 @@ export function CrimeOpsStrip({
         <button
           type="button"
           onClick={onIsolateHom}
-          className="h-5 border border-hot/50 bg-hot/10 px-1.5 font-mono text-[10px] tracking-widest text-hot uppercase hover:bg-hot/20"
+          className="ml-auto h-6 border border-hot/50 bg-hot/10 px-1.5 font-mono text-[10px] tracking-widest text-hot uppercase hover:bg-hot/20"
         >
           HOM only
         </button>
@@ -86,7 +89,7 @@ export function CrimeFirstTips() {
   return (
     <div
       data-crime-tips
-      className="mt-1 flex max-w-md items-start gap-2 border border-line bg-elevated/90 px-2 py-1.5"
+      className="flex items-start gap-2 border-t border-line px-3 py-1.5"
     >
       <ul className="min-w-0 flex-1 space-y-0.5 font-mono text-[10px] leading-snug tracking-wide text-muted">
         {TIPS.map((tip) => (

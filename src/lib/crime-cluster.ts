@@ -1,5 +1,30 @@
 export type Clusterable = { x: number; y: number };
 
+/**
+ * Area-proportional cluster radius: r ∝ √n, then hard-clamped to the viewport.
+ *
+ * r = rMin + (rMax − rMin) * min(1, √((n−1) / (nSoft−1)))
+ * rMax = min(rMaxPx, mapW * rMaxFrac)
+ *
+ * Defaults keep a ~5-count 30d bubble modest and stop YTD metros from
+ * eating the state: rMax is ~3.5% of map width (≈7% diameter) and never
+ * more than 18px. Ripples expand to ~1.25× this core radius.
+ */
+export function clusterRadius(
+  n: number,
+  mapW: number,
+  opts?: { rMin?: number; rMaxFrac?: number; rMaxPx?: number; nSoft?: number },
+): number {
+  const count = Math.max(1, n);
+  const rMin = opts?.rMin ?? 7;
+  const rMaxFrac = opts?.rMaxFrac ?? 0.035;
+  const rMaxPx = opts?.rMaxPx ?? 18;
+  const nSoft = Math.max(2, opts?.nSoft ?? 64);
+  const rMax = Math.max(rMin + 2, Math.min(rMaxPx, mapW * rMaxFrac));
+  const t = Math.min(1, Math.sqrt((count - 1) / (nSoft - 1)));
+  return rMin + (rMax - rMin) * t;
+}
+
 export type Cluster<T extends Clusterable> = {
   x: number;
   y: number;
