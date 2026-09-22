@@ -147,11 +147,11 @@ export const CRIME_META: { id: CrimeKind; label: string; chip: string }[] = [
 
 export type CrimeAgency = "mem" | "nash" | "cha" | "rest";
 export type CrimeAgencies = Record<CrimeAgency, boolean>;
-export const AGENCY_META: { id: CrimeAgency; label: string }[] = [
+export const AGENCY_META: { id: CrimeAgency; label: string; title?: string }[] = [
   { id: "mem", label: "Mem" },
   { id: "nash", label: "Nash" },
   { id: "cha", label: "Chat" },
-  { id: "rest", label: "Rest" },
+  { id: "rest", label: "Rest", title: "Outside MEM·NASH·CHAT" },
 ];
 
 export type CrimeWindow = "48h" | "today" | "7d" | "30d" | "ytd";

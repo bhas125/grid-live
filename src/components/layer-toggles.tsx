@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
-  CrimeAgency,
-  CrimeAgencies,
   CrimeKind,
   CrimeLayers,
   CrimeWindow,
@@ -12,7 +10,7 @@ import type {
   RaceLayers,
   RaceSlice,
 } from "@/data/types";
-import { AGENCY_META, CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
+import { CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
 
 const ITEMS: { id: LayerId; label: string }[] = [
   { id: "interstates", label: "Roads" },
@@ -32,10 +30,9 @@ export function LayerToggles({
   onToggleRace,
   crimeLayers,
   onToggleCrime,
-  crimeAgency,
-  onToggleAgency,
   crimeWindow,
   onCrimeWindow,
+  onIsolateHom,
 }: {
   layers: Layers;
   onToggle: (id: LayerId) => void;
@@ -43,10 +40,9 @@ export function LayerToggles({
   onToggleRace: (id: RaceSlice) => void;
   crimeLayers: CrimeLayers;
   onToggleCrime: (id: CrimeKind) => void;
-  crimeAgency: CrimeAgencies;
-  onToggleAgency: (id: CrimeAgency) => void;
   crimeWindow: CrimeWindow;
   onCrimeWindow: (id: CrimeWindow) => void;
+  onIsolateHom?: () => void;
   zoomed?: boolean;
 }) {
   const [raceOpen, setRaceOpen] = useState(layers.race);
@@ -74,7 +70,7 @@ export function LayerToggles({
               onClick={() => onToggle(item.id)}
               aria-pressed={on}
               className={cn(
-                "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                 on
                   ? "border-grid bg-grid/15 text-grid"
                   : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
@@ -110,8 +106,15 @@ export function LayerToggles({
                   type="button"
                   onClick={() => onToggleCrime(item.id)}
                   aria-pressed={on}
+                  title={
+                    item.id === "sht"
+                      ? "Shootings — deselect to isolate homicides"
+                      : item.id === "hom"
+                        ? "Homicides"
+                        : undefined
+                  }
                   className={cn(
-                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                     on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
                   )}
                 >
@@ -119,6 +122,22 @@ export function LayerToggles({
                 </button>
               );
             })}
+            {onIsolateHom ? (
+              <button
+                type="button"
+                onClick={onIsolateHom}
+                aria-pressed={crimeLayers.hom && !crimeLayers.sht}
+                title="Turn off SHT to isolate homicides"
+                className={cn(
+                  "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                  crimeLayers.hom && !crimeLayers.sht
+                    ? "border-hot bg-hot/15 text-hot"
+                    : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+                )}
+              >
+                Isolate HOM
+              </button>
+            ) : null}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
             {WINDOW_META.map((item) => {
@@ -130,29 +149,9 @@ export function LayerToggles({
                   onClick={() => onCrimeWindow(item.id)}
                   aria-pressed={on}
                   className={cn(
-                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
                     on
                       ? item.chip ?? "border-grid bg-grid/15 text-grid"
-                      : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
-                  )}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-            <span className="mx-0.5 h-4 w-px bg-line" />
-            {AGENCY_META.map((item) => {
-              const on = crimeAgency[item.id];
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onToggleAgency(item.id)}
-                  aria-pressed={on}
-                  className={cn(
-                    "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
-                    on
-                      ? "border-steel bg-steel/15 text-steel"
                       : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
                   )}
                 >
@@ -173,10 +172,10 @@ export function LayerToggles({
                 type="button"
                 onClick={() => onToggleRace(item.id)}
                 aria-pressed={on}
-                className={cn(
-                  "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
-                  on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
-                )}
+                  className={cn(
+                    "chip-press h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+                    on ? item.chip : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+                  )}
               >
                 {item.label}
               </button>
@@ -208,7 +207,7 @@ function ExpandChip({
         onClick={onToggle}
         aria-pressed={on}
         className={cn(
-          "px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+          "chip-press px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
           on ? "bg-grid/15 text-grid" : "bg-surface/90 text-faint hover:text-muted",
         )}
       >

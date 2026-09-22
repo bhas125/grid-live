@@ -120,3 +120,58 @@ export function filterCrime(
   });
 }
 
+function staleNewsStory(c: CrimeIncident) {
+  if (c.source !== "News") return false;
+  const t = `${c.address ?? ""} ${c.offense ?? ""}`;
+  return /\b2025\b|\b2024\b/.test(t) && !/\b2026\b/.test(t);
+}
+
+/** Crime map is always statewide — metro MEM/NASH/CHAT/REST tiles are gone. */
+export const STATEWIDE_AGENCY: Record<CrimeAgency, boolean> = {
+  mem: true,
+  nash: true,
+  cha: true,
+  rest: true,
+};
+
+/** Statewide ops-strip totals for the active time window. */
+export function countCrimeOps(rows: CrimeIncident[], win: CrimeWindow, now = Date.now()) {
+  let hom = 0;
+  let sht = 0;
+  let lead = 0;
+  for (const c of rows) {
+    if (isDispatch(c)) continue;
+    if (isLead(c)) {
+      if (isFresh48(c.date, now)) lead += 1;
+      continue;
+    }
+    if (!(c.date ?? "").startsWith("2026")) continue;
+    if (staleNewsStory(c)) continue;
+    if (c.source === "GVA" && win !== "ytd") continue;
+    if (!inCrimeWindow(c.date, win, now)) continue;
+    if (isHomicide(c.type)) hom += 1;
+    else if (isShooting(c.type)) sht += 1;
+  }
+  return { hom, sht, lead };
+}
+
+export type CrimeEmptyHint = {
+  line: string;
+  action?: "48h";
+  actionLabel?: string;
+};
+
+export function crimeEmptyHint(opts: { window: CrimeWindow; county: string | null }): CrimeEmptyHint {
+  if (opts.window === "today") {
+    return {
+      line: "No incidents in TODAY · try 48H",
+      action: "48h",
+      actionLabel: "48H",
+    };
+  }
+  if (opts.county) {
+    return { line: `No incidents in ${opts.county} for this filter.` };
+  }
+  return { line: "No incidents in this filter." };
+}
+

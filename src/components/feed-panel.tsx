@@ -7,6 +7,7 @@ import type {
   County,
   CrimeIncident,
   CrimeLayers,
+  CrimeWindow,
   ElectYear,
   NewsItem,
   Precinct,
@@ -22,7 +23,7 @@ import { cn, fmtAge, fmtMargin, fmtNum, fmtPct } from "@/lib/utils";
 import { newsCacheAge, newsCacheKey, fetchNews, readNewsCache } from "@/lib/news-cache";
 import { zipTone } from "@/lib/race-tone";
 import { isFresh48 } from "@/lib/crime-fresh";
-import { crimeLabel, isHomicide, isShooting } from "@/lib/crime-window";
+import { crimeEmptyHint, crimeLabel, isHomicide, isShooting } from "@/lib/crime-window";
 import { AboutPanel } from "./about-panel";
 
 const TABS: { id: TabId; label: string }[] = [
@@ -221,11 +222,17 @@ function CrimeFeed({
   incidents,
   crimeLayers,
   onPickCrime,
+  ready,
+  crimeWindow,
+  onCrimeWindow,
 }: {
   county: County | null;
   incidents: CrimeIncident[];
   crimeLayers: CrimeLayers;
   onPickCrime?: (c: CrimeIncident) => void;
+  ready: boolean;
+  crimeWindow: CrimeWindow;
+  onCrimeWindow?: (id: CrimeWindow) => void;
 }) {
   const [shownHom, setShownHom] = useState(PAGE);
   const [shownSht, setShownSht] = useState(PAGE);
@@ -278,13 +285,30 @@ function CrimeFeed({
 
   const visibleHom = homList.slice(0, shownHom);
   const visibleSht = shtList.slice(0, shownSht);
+  const empty = ready && !homList.length && !shtList.length;
+  const hint = empty
+    ? crimeEmptyHint({
+        window: crimeWindow,
+        county: county?.name ?? null,
+      })
+    : null;
 
   return (
     <div>
       <div className="flex flex-wrap gap-2 px-4 pb-2">
-        <Stat k="2026" v={`${fmtNum(stats.n)} pts`} />
-        <Stat k="Hom" v={fmtNum(stats.hom)} />
-        <Stat k="Sht" v={fmtNum(stats.sht)} />
+        {ready ? (
+          <>
+            <Stat k="2026" v={`${fmtNum(stats.n)} pts`} />
+            <Stat k="Hom" v={fmtNum(stats.hom)} />
+            <Stat k="Sht" v={fmtNum(stats.sht)} />
+          </>
+        ) : (
+          <>
+            <span className="inline-flex h-7 w-24 animate-pulse border border-line bg-elevated/80" />
+            <span className="inline-flex h-7 w-16 animate-pulse border border-line bg-elevated/80" />
+            <span className="inline-flex h-7 w-16 animate-pulse border border-line bg-elevated/80" />
+          </>
+        )}
       </div>
       <p className="px-4 pb-2 font-mono text-xs leading-relaxed tracking-wide text-muted">
         {county ? (
@@ -296,8 +320,19 @@ function CrimeFeed({
           <span className="mt-1 block text-faint">GVA through Jun 28 2026 — not a live statewide fill.</span>
         ) : null}
       </p>
-      {!incidents.length ? (
-        <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">Loading incidents</p>
+      {empty && hint ? (
+        <div className="px-4 py-3">
+          <p className="font-mono text-xs tracking-wide text-muted uppercase">{hint.line}</p>
+          {hint.action === "48h" && onCrimeWindow ? (
+            <button
+              type="button"
+              onClick={() => onCrimeWindow("48h")}
+              className="chip-press mt-2 h-6 border border-grid bg-grid/15 px-1.5 font-mono text-[10px] tracking-widest text-grid uppercase"
+            >
+              {hint.actionLabel}
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {homOn && visibleHom.length ? (
         <>
@@ -310,12 +345,6 @@ function CrimeFeed({
           <div className="px-4 pt-2 font-mono text-[10px] tracking-widest text-watch uppercase">Shootings</div>
           <CrimeRows rows={visibleSht} onPickCrime={onPickCrime} />
         </>
-      ) : null}
-      {incidents.length > 0 && !homList.length && !shtList.length ? (
-        <p className="px-4 py-3 text-sm text-muted">
-          No 2026 homicide / shooting points in this county yet. Official city feeds cover
-          Memphis, Nashville, and Chattanooga; statewide GVA coverage runs through June 30.
-        </p>
       ) : null}
       <div ref={sentinel} className="h-4" />
     </div>
@@ -718,6 +747,9 @@ export function FeedPanel({
   zips,
   pickedZip,
   onPickZip,
+  crimeReady = true,
+  crimeWindow = "ytd",
+  onCrimeWindow,
 }: {
   county: County | null;
   tab: TabId;
@@ -739,6 +771,9 @@ export function FeedPanel({
   zips: ZipRace[] | null;
   pickedZip: string | null;
   onPickZip: (z: ZipRace) => void;
+  crimeReady?: boolean;
+  crimeWindow?: CrimeWindow;
+  onCrimeWindow?: (id: CrimeWindow) => void;
 }) {
   const extra: NewsItem[] = (county ? alerts.filter((a) => a.counties.includes(county.name)) : alerts).map(
     (a) => ({
@@ -850,7 +885,15 @@ export function FeedPanel({
       </div>
       <div className={tab === "crime" ? "flex min-h-0 flex-1 flex-col overflow-y-auto" : "hidden"}>
         {crimeLayers.hom || crimeLayers.sht ? (
-          <CrimeFeed county={county} incidents={crime} crimeLayers={crimeLayers} onPickCrime={onPickCrime} />
+          <CrimeFeed
+            county={county}
+            incidents={crime}
+            crimeLayers={crimeLayers}
+            onPickCrime={onPickCrime}
+            ready={crimeReady}
+            crimeWindow={crimeWindow}
+            onCrimeWindow={onCrimeWindow}
+          />
         ) : null}
         {crimeLayers.reg ? <SorFeed county={county} active={tab === "crime" && crimeLayers.reg} /> : null}
         {!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.reg && !crimeLayers.cad ? (

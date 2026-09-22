@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronUp, Layers as LayersIcon } from "lucide-react";
 import countiesJson from "@/data/counties.json";
 import type {
   Alert,
   County,
-  CrimeAgencies,
-  CrimeAgency,
   CrimeIncident,
   CrimeKind,
   CrimeLayers,
@@ -24,10 +22,11 @@ import type {
 } from "@/data/types";
 import { COUNTY_XY } from "@/lib/county-xy";
 import { centroid, countyFipsAt, geomLonLatBBox, nearestCountyName, type MapPin } from "@/lib/geo";
-import { filterCrime, isDispatch, windowLabel } from "@/lib/crime-window";
+import { countCrimeOps, filterCrime, isDispatch, STATEWIDE_AGENCY } from "@/lib/crime-window";
 import { prefetchNews } from "@/lib/news-cache";
-import { cn, fmtNum } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { AddressSearch } from "./address-search";
+import { CrimeOpsStrip } from "./crime-ops-strip";
 import { CrimeShare, FeedPanel } from "./feed-panel";
 import { LayerToggles } from "./layer-toggles";
 import { MarketTicker } from "./market-ticker";
@@ -55,7 +54,6 @@ const DEFAULT_LAYERS: Layers = {
 
 const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, reg: false, cad: false };
 const DEFAULT_RACE: RaceLayers = { w: true, b: true, h: true, a: true, o: true };
-const DEFAULT_AGENCY: CrimeAgencies = { mem: true, nash: true, cha: true, rest: true };
 
 type FeedSize = "hidden" | "dock" | "open";
 
@@ -101,7 +99,6 @@ export function GridApp() {
   const [briefs, setBriefs] = useState<Record<string, string>>({});
   const [crime, setCrime] = useState<CrimeIncident[]>([]);
   const [crimeLayers, setCrimeLayers] = useState<CrimeLayers>(DEFAULT_CRIME);
-  const [crimeAgency, setCrimeAgency] = useState<CrimeAgencies>(DEFAULT_AGENCY);
   const [crimeWindow, setCrimeWindow] = useState<CrimeWindow>("ytd");
   const [feedSize, setFeedSize] = useState<FeedSize>("dock");
   const [layersOpen, setLayersOpen] = useState(true);
@@ -113,7 +110,7 @@ export function GridApp() {
   const [zips, setZips] = useState<ZipRace[] | null>(null);
   const [pickedZip, setPickedZip] = useState<string | null>(null);
   const [zipFocus, setZipFocus] = useState<{ lon: number; lat: number } | null>(null);
-  const crimeLoaded = useRef(false);
+  const [crimeReady, setCrimeReady] = useState(false);
 
   useEffect(() => {
     fetch("/tn-counties.geojson")
@@ -144,6 +141,27 @@ export function GridApp() {
   }, []);
 
   useEffect(() => {
+    let live = true;
+    fetch("/crime-tn.json")
+      .then((r) => r.json())
+      .then((d: CrimeIncident[]) => {
+        if (!live) return;
+        const rows = (Array.isArray(d) ? d : []).filter(
+          (r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch",
+        );
+        setCrime(rows);
+        setCrimeReady(true);
+      })
+      .catch(() => {
+        if (!live) return;
+        setCrimeReady(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (tab !== "crime" && !layers.crime) return;
     let live = true;
     const mergeLive = (next: CrimeIncident[]) => {
@@ -164,19 +182,7 @@ export function GridApp() {
         }
         return added ? [...have.values()] : prev;
       });
-    };
-    const loadSnap = () => {
-      fetch("/crime-tn.json")
-        .then((r) => r.json())
-        .then((d: CrimeIncident[]) => {
-          if (!live) return;
-          crimeLoaded.current = true;
-          const rows = (Array.isArray(d) ? d : []).filter(
-            (r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch",
-          );
-          setCrime(rows);
-        })
-        .catch(() => undefined);
+      setCrimeReady(true);
     };
     const loadLive = () => {
       if (document.visibilityState === "hidden") return;
@@ -189,10 +195,6 @@ export function GridApp() {
         })
         .catch(() => undefined);
     };
-    if (!crimeLoaded.current) {
-      crimeLoaded.current = true;
-      loadSnap();
-    }
     const wait = window.setTimeout(loadLive, 900);
     const poll = window.setInterval(loadLive, 60 * 60_000);
     let waitR = 0;
@@ -418,21 +420,33 @@ export function GridApp() {
     setCrimeLayers((prev) => ({ ...prev, [kind]: !prev[kind] }));
   }
 
-  function toggleAgency(id: CrimeAgency) {
-    setCrimeAgency((prev) => ({ ...prev, [id]: !prev[id] }));
+  function isolateHom() {
+    setCrimeLayers((prev) => {
+      if (prev.hom && !prev.sht) return { ...prev, sht: true };
+      return { ...prev, hom: true, sht: false };
+    });
   }
 
   const visibleCrime = useMemo(
     () =>
       filterCrime(crime, {
         window: crimeWindow,
-        agency: crimeAgency,
+        agency: STATEWIDE_AGENCY,
         includeGva: crimeWindow === "ytd",
         // Lead toggle: keep confirmed:false rows so TnMap can draw dashed Lead pins.
         includeLeads: crimeLayers.cad,
       }),
-    [crime, crimeWindow, crimeAgency, crimeLayers.cad],
+    [crime, crimeWindow, crimeLayers.cad],
   );
+
+  const opsLive = useMemo(() => countCrimeOps(crime, crimeWindow), [crime, crimeWindow]);
+  const [opsHeld, setOpsHeld] = useState(opsLive);
+  useEffect(() => {
+    if (crimeReady) setOpsHeld(opsLive);
+  }, [crimeReady, opsLive]);
+  const crimeOps = crimeReady ? opsLive : opsHeld;
+  const opsReady = crimeReady || opsHeld.hom + opsHeld.sht + opsHeld.lead > 0;
+  const [drillTick, setDrillTick] = useState(0);
 
   function toggle(id: LayerId) {
     if (id === "race" && layers.race) {
@@ -481,17 +495,27 @@ export function GridApp() {
         <div className="flex items-start justify-between gap-3">
         <div>
           {selected ? (
-            <button
-              type="button"
-              onClick={backToState}
-              className="flex h-11 items-center gap-2 text-fg hover:opacity-80"
-              aria-label="Back to state"
-            >
-              <ArrowLeft className="size-5" />
-              <span className="font-display text-3xl leading-none font-semibold tracking-wide uppercase">
-                {selected.name}
-              </span>
-            </button>
+            <div className="flex h-11 items-center gap-2">
+              <button
+                type="button"
+                onClick={backToState}
+                aria-label="Back to state"
+                className="h-7 shrink-0 border border-grid bg-grid/15 px-2 font-mono text-[10px] tracking-widest text-grid uppercase hover:bg-grid/25"
+              >
+                STATE
+              </button>
+              <button
+                type="button"
+                onClick={backToState}
+                className="flex min-w-0 items-center gap-2 text-fg hover:opacity-80"
+                aria-label={`Back to state from ${selected.name}`}
+              >
+                <ArrowLeft className="size-5 shrink-0" />
+                <span className="font-display text-3xl leading-none font-semibold tracking-wide uppercase">
+                  {selected.name}
+                </span>
+              </button>
+            </div>
           ) : (
             <div className="flex h-11 items-center gap-3">
               <span className="grid grid-cols-2 gap-px" aria-hidden="true">
@@ -508,11 +532,6 @@ export function GridApp() {
           <p className="font-mono text-xs tracking-widest text-faint uppercase">
             {selected ? `${selected.seat} · ${selected.division}` : "Tennessee"}
           </p>
-          {crime.length ? (
-            <p className="font-mono text-xs tracking-widest text-faint uppercase">
-              {fmtNum(visibleCrime.length)} · {windowLabel(crimeWindow)}
-            </p>
-          ) : null}
           <div className="relative mt-1 flex flex-col items-start">
             <AddressSearch pin={pin} onGo={goToPlace} onClear={clearPin} />
             <button
@@ -572,49 +591,65 @@ export function GridApp() {
             onToggleRace={toggleRace}
             crimeLayers={crimeLayers}
             onToggleCrime={toggleCrime}
-            crimeAgency={crimeAgency}
-            onToggleAgency={toggleAgency}
             crimeWindow={crimeWindow}
             onCrimeWindow={setCrimeWindow}
+            onIsolateHom={isolateHom}
           />
         ) : null}
       </div>
-      <div className="relative min-h-0 flex-1">
-        <TnMap
-          geo={geo}
-          selected={selected}
-          onSelect={pickCounty}
-          onPickPrecinct={pickPrecinct}
-          pickedId={precinct?.id ?? null}
-          layers={layers}
-          alerts={alerts}
-          crime={visibleCrime}
-          showCrime={layers.crime}
-          crimeLayers={crimeLayers}
-          showSor={layers.crime && crimeLayers.reg}
-          pin={pin}
-          onClearPin={clearPin}
-          focusTick={focusTick}
-          focusCrimeId={focusCrimeId}
-          showZips={!!selected && layers.race}
-          zips={zips ?? []}
-          raceLayers={raceLayers}
-          pickedZip={pickedZip}
-          onPickZip={pickZip}
-          onWarmZips={layers.race ? warmZips : undefined}
-          focusZip={zipFocus}
-          feedHidden={feedSize === "hidden"}
-        />
-        {feedSize === "hidden" ? (
-          <button
-            type="button"
-            onClick={() => setFeed("dock")}
-            aria-label="Show panel"
-            title="Show panel"
-            className="absolute bottom-2 left-1/2 z-30 grid size-8 -translate-x-1/2 place-items-center border border-line bg-elevated/90 text-grid hover:border-grid"
-          >
-            <ChevronUp className="size-3.5" />
-          </button>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="relative min-h-0 flex-1">
+          <TnMap
+            geo={geo}
+            selected={selected}
+            onSelect={pickCounty}
+            onPickPrecinct={pickPrecinct}
+            pickedId={precinct?.id ?? null}
+            layers={layers}
+            alerts={alerts}
+            crime={visibleCrime}
+            showCrime={layers.crime}
+            crimeLayers={crimeLayers}
+            showSor={layers.crime && crimeLayers.reg}
+            pin={pin}
+            onClearPin={clearPin}
+            focusTick={focusTick}
+            focusCrimeId={focusCrimeId}
+            showZips={!!selected && layers.race}
+            zips={zips ?? []}
+            raceLayers={raceLayers}
+            pickedZip={pickedZip}
+            onPickZip={pickZip}
+            onWarmZips={layers.race ? warmZips : undefined}
+            focusZip={zipFocus}
+            feedHidden={feedSize === "hidden"}
+            onBackToState={backToState}
+            onClusterIntercept={() => setDrillTick((n) => n + 1)}
+          />
+          {feedSize === "hidden" ? (
+            <button
+              type="button"
+              onClick={() => setFeed("dock")}
+              aria-label="Show panel"
+              title="Show panel"
+              className="absolute bottom-2 left-1/2 z-30 grid size-8 -translate-x-1/2 place-items-center border border-line bg-elevated/90 text-grid hover:border-grid"
+            >
+              <ChevronUp className="size-3.5" />
+            </button>
+          ) : null}
+        </div>
+        {layers.crime ? (
+          <div className="shrink-0 border-t border-line bg-bg px-2 py-1.5 sm:px-3">
+            <CrimeOpsStrip
+              hom={crimeOps.hom}
+              sht={crimeOps.sht}
+              lead={crimeOps.lead}
+              ready={opsReady}
+              isolated={crimeLayers.hom && !crimeLayers.sht}
+              onIsolateHom={isolateHom}
+              drillTick={drillTick}
+            />
+          </div>
         ) : null}
       </div>
       {selected && layers.crime && feedSize !== "hidden" ? (
@@ -635,6 +670,9 @@ export function GridApp() {
         crime={visibleCrime}
         crimeLayers={crimeLayers}
         onPickCrime={goToIncident}
+        crimeReady={crimeReady}
+        crimeWindow={crimeWindow}
+        onCrimeWindow={setCrimeWindow}
         electYear={electYear}
         onElectYear={handleElectYear}
         raceOn={layers.race}
