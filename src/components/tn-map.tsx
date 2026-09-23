@@ -5,11 +5,10 @@ import roadsJson from "@/data/roads.json";
 import sitesJson from "@/data/sites.json";
 import { popWeight } from "@/data/intel";
 import { isFresh48 } from "@/lib/crime-fresh";
-import { clusterByCounty, clusterXY } from "@/lib/crime-cluster";
+import { clusterRadius, clusterXY, hexBin, hexScreenRadius } from "@/lib/crime-cluster";
 import {
   crimeLabel,
   inferGeo,
-  isDenseCounty,
   isDispatch,
   isHomicide,
   isImprecise,
@@ -102,6 +101,63 @@ function storyHref(c: CrimeIncident, names?: CrimeNames | null) {
   return null;
 }
 
+const RIPPLE_MS = 1800;
+const RIPPLE_RINGS = 3;
+
+function pathHex(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i;
+    const x = cx + r * Math.cos(a);
+    const y = cy + r * Math.sin(a);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
+function shortCount(n: number) {
+  if (n >= 10000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+function rippleCap(mapW: number) {
+  return Math.max(5, Math.min(8, mapW * 0.012));
+}
+
+function drawClusterRipples(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  rr: number,
+  color: string,
+  now: number,
+  reduced: boolean,
+  phaseOffset = 0,
+  maxR?: number,
+) {
+  const cap = maxR ?? rippleCap(400);
+  const core = Math.min(rr, cap * 0.55);
+  ctx.strokeStyle = color;
+  if (reduced) {
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, Math.min(cap, core * 1.15), 0, Math.PI * 2);
+    ctx.stroke();
+    return;
+  }
+  for (let i = 0; i < RIPPLE_RINGS; i++) {
+    const phase = ((now / RIPPLE_MS) + i / RIPPLE_RINGS + phaseOffset) % 1;
+    ctx.globalAlpha = (1 - phase) * 0.55;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(sx, sy, Math.min(cap, core * (0.7 + phase * 0.9)), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 const TIP_W = 224;
 const TIP_GAP = 28;
 const ZOOM_IN = 1 / 1.55;
@@ -184,7 +240,7 @@ type Hit = {
   cam?: TrafficCam;
   sor?: SorPoint;
   flight?: Flight;
-  cluster?: { x: number; y: number; n: number };
+  cluster?: { x: number; y: number; n: number; county?: string };
 };
 
 type Tip = {
@@ -442,6 +498,7 @@ export function TnMap({
   onWarmZips,
   focusZip = null,
   feedHidden = false,
+  onBackToState,
 }: {
   geo: GeoFeature[] | null;
   selected: County | null;
@@ -466,6 +523,7 @@ export function TnMap({
   onWarmZips?: (fips: string) => void;
   focusZip?: { lon: number; lat: number } | null;
   feedHidden?: boolean;
+  onBackToState?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -489,6 +547,9 @@ export function TnMap({
   const [sor, setSor] = useState<SorPoint[]>([]);
   const skipSelect = useRef(false);
   const stealClick = useRef(false);
+  const coarsePointer = useRef(false);
+  const reduceMotion = useRef(false);
+  const rippleFrozen = useRef(0);
   const pan = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
   const [alpr, setAlpr] = useState<AlprPoint[]>([]);
   const [cams, setCams] = useState<TrafficCam[]>([]);
@@ -677,6 +738,22 @@ export function TnMap({
       live = false;
     };
   }, [selected, layers.p24]);
+
+  useEffect(() => {
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => {
+      coarsePointer.current = coarse.matches;
+      reduceMotion.current = motion.matches;
+    };
+    apply();
+    coarse.addEventListener("change", apply);
+    motion.addEventListener("change", apply);
+    return () => {
+      coarse.removeEventListener("change", apply);
+      motion.removeEventListener("change", apply);
+    };
+  }, []);
 
   const paths = useMemo(() => {
     if (!geo || !project) return [];
@@ -1042,6 +1119,7 @@ export function TnMap({
     const cols = Math.max(1, Math.ceil(w / cell));
     const seen = new Uint8Array(cols * Math.max(1, Math.ceil(h / cell)));
     const record = !busy.current;
+    let clusterRipple = false;
 
     const stamp = (sx: number, sy: number, force: boolean) => {
       const gi = ((sy / cell) | 0) * cols + ((sx / cell) | 0);
@@ -1165,18 +1243,21 @@ export function TnMap({
 
       const fitW = fitRef.current.w || cur.w;
       const ratio = fitW / Math.max(1, cur.w);
-      const dense = isDenseCounty(selectedRef.current?.name);
-      const stateZoom = FULL_VIEW.w / Math.max(1, cur.w);
       const overRace = showZipsRef.current;
-      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
-      const metro = new Set(["Shelby", "Davidson", "Hamilton", "Knox"]);
+      const stateZoom = FULL_VIEW.w / Math.max(1, cur.w);
+      const hexView = !zoomedNow && stateZoom < 1.4;
+      const pinView = ratio >= 6;
+      const compactView = !hexView && !pinView;
+      const wantCluster = hexView || compactView;
+      const detailRipple = pinView;
+      const capR = rippleCap(w);
 
       const pinColor = (c: CrimePt) => {
         if (isHomicide(c.type)) return "#ff4d4d";
         return "#ffb347";
       };
 
-      const drawPin = (c: CrimePt, force: boolean) => {
+      const drawPin = (c: CrimePt, force: boolean, ripple = false) => {
         const sx = (c.x - cur.x) * s + ox;
         const sy = (c.y - cur.y) * s + oy;
         if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) return;
@@ -1186,6 +1267,12 @@ export function TnMap({
         const hom = isHomicide(c.type);
         let r = (hom ? (s > 4 ? 3.1 : s > 1.4 ? 2.5 : 2.05) : s > 4 ? 2.15 : s > 1.4 ? 1.7 : 1.35) * (overRace ? 1.35 : 1);
         const col = pinColor(c);
+        if (ripple) {
+          clusterRipple = true;
+          const now = busy.current ? rippleFrozen.current : performance.now();
+          if (!busy.current) rippleFrozen.current = now;
+          drawClusterRipples(ctx, sx, sy, r + 2, col, now, reduceMotion.current, hom ? 0.33 : 0, capR);
+        }
         ctx.beginPath();
         ctx.arc(sx, sy, fuzzy ? r + 1.1 : r, 0, Math.PI * 2);
         if (fuzzy) {
@@ -1203,67 +1290,143 @@ export function TnMap({
           ctx.stroke();
         }
         if (record) {
+          const tap = coarsePointer.current ? 14 : 0;
           hits.current.push({
             title: crimeLabel(c.type),
             lines: crimeTipLines(c),
             x: sx,
             y: sy,
-            r: r + (fuzzy ? 10 : 8),
+            r: r + (fuzzy ? 10 : 8) + tap,
             crime: c,
           });
         }
       };
 
       if (wantCluster) {
-        const groups = !zoomedNow
-          ? stateZoom < 1.18
-            ? clusterByCounty(plot, { minN: 8, restCell: 38, always: metro })
-            : stateZoom < 2.05
-              ? clusterXY(plot, 14)
-              : clusterXY(plot, 7)
-          : clusterXY(plot, 5.8);
+        const hexR = hexScreenRadius(w);
+        const groups = hexView ? hexBin(plot, hexR / Math.max(0.45, s)) : clusterXY(plot, 5.8);
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = !zoomedNow && stateZoom < 1.18 ? "600 10px 'IBM Plex Mono', ui-monospace, monospace" : "600 9px 'IBM Plex Mono', ui-monospace, monospace";
+        ctx.font = "700 9px 'IBM Plex Mono', ui-monospace, monospace";
         for (const g of groups) {
           const sx = (g.x - cur.x) * s + ox;
           const sy = (g.y - cur.y) * s + oy;
           if (sx < -pad || sy < -pad || sx > w + pad || sy > h + pad) continue;
-          if (g.n === 1) {
-            drawPin(g.items[0], true);
+          if (g.n === 1 && !hexView) {
+            drawPin(g.items[0], true, detailRipple);
             continue;
           }
           if (!stamp(sx, sy, true)) continue;
           const homN = g.items.filter((it) => isHomicide(it.type)).length;
           const shtN = g.n - homN;
-          const fill = homN >= shtN ? "#ff4d4d" : "#ffb347";
-          const rr = Math.min(!zoomedNow && stateZoom < 1.18 ? 28 : 16, 7 + Math.log2(g.n) * (!zoomedNow && stateZoom < 1.18 ? 3.1 : 2.2));
+          const counties = new Set(g.items.map((it) => it.county).filter(Boolean));
+          const clusterCounty = counties.size === 1 ? [...counties][0] : undefined;
+          const majority = homN >= shtN ? "#ff4d4d" : "#ffb347";
+          if (hexView) {
+            ctx.save();
+            ctx.lineJoin = "miter";
+            ctx.miterLimit = 2;
+            pathHex(ctx, sx, sy, hexR);
+            ctx.clip();
+            if (homN && shtN) {
+              ctx.fillStyle = "#ffb347";
+              ctx.globalAlpha = overRace ? 0.86 : 0.92;
+              ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2);
+              ctx.fillStyle = "#ff4d4d";
+              ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2 * (homN / g.n));
+            } else {
+              ctx.fillStyle = majority;
+              ctx.globalAlpha = overRace ? 0.86 : 0.94;
+              ctx.fillRect(sx - hexR, sy - hexR, hexR * 2, hexR * 2);
+            }
+            ctx.restore();
+            ctx.lineJoin = "miter";
+            ctx.miterLimit = 2;
+            pathHex(ctx, sx, sy, hexR);
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 1.35;
+            ctx.strokeStyle = "#0a0e14";
+            ctx.stroke();
+            pathHex(ctx, sx, sy, hexR - 0.6);
+            ctx.lineWidth = 1.05;
+            ctx.strokeStyle = majority;
+            ctx.stroke();
+            const label = shortCount(g.n);
+            ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
+            ctx.shadowColor = "rgba(10,14,20,0.92)";
+            ctx.shadowBlur = 3;
+            ctx.fillStyle = "#e8f6ff";
+            ctx.fillText(label, sx, sy + 0.5);
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = "transparent";
+            if (homN && shtN) {
+              const badge = shortCount(homN);
+              ctx.font = "700 7px 'IBM Plex Mono', ui-monospace, monospace";
+              const bw = Math.max(9, ctx.measureText(badge).width + 4);
+              const bx = sx + hexR * 0.28;
+              const by = sy - hexR * 0.92;
+              ctx.fillStyle = "#ff4d4d";
+              ctx.fillRect(bx, by, bw, 9);
+              ctx.fillStyle = "#fff5f5";
+              ctx.fillText(badge, bx + bw / 2, by + 5);
+            }
+            if (record) {
+              const tap = coarsePointer.current ? 10 : 0;
+              hits.current.push({
+                title: `${g.n} incidents`,
+                lines: [`${homN} hom · ${shtN} sht`],
+                x: sx,
+                y: sy,
+                r: hexR + 3 + tap,
+                cluster: { x: g.x, y: g.y, n: g.n, county: clusterCounty },
+              });
+            }
+            continue;
+          }
+          const rr = clusterRadius(g.n, w, { rMin: 5, rMaxPx: 10, rMaxFrac: 0.02, nSoft: 48 });
+          const now = busy.current ? rippleFrozen.current : performance.now();
+          if (!busy.current) rippleFrozen.current = now;
+          const reduced = reduceMotion.current;
+          if (!reduced) clusterRipple = true;
+          if (shtN) drawClusterRipples(ctx, sx, sy, rr, "#ffb347", now, reduced, 0, Math.min(9, rr * 1.15));
+          if (homN) drawClusterRipples(ctx, sx, sy, rr, "#ff4d4d", now, reduced, shtN ? 0.33 : 0, Math.min(9, rr * 1.15));
           ctx.beginPath();
-          ctx.fillStyle = fill;
-          ctx.strokeStyle = overRace ? "#e8f6ff" : fill;
-          ctx.lineWidth = overRace ? 1.2 : 1.1;
-          ctx.globalAlpha = overRace ? 0.7 : !zoomedNow && stateZoom < 1.18 ? 0.42 : 0.28;
-          ctx.arc(sx, sy, rr, 0, Math.PI * 2);
+          ctx.fillStyle = "#0a0e14";
+          ctx.globalAlpha = overRace ? 0.78 : 0.7;
+          ctx.arc(sx, sy, Math.max(5, rr * 0.72), 0, Math.PI * 2);
           ctx.fill();
-          ctx.globalAlpha = overRace ? 0.95 : 0.78;
+          ctx.lineWidth = 1.15;
+          ctx.globalAlpha = 0.92;
+          ctx.strokeStyle = majority;
           ctx.stroke();
-          ctx.globalAlpha = 0.95;
+          ctx.globalAlpha = 0.96;
           ctx.fillStyle = "#e8f6ff";
-          ctx.fillText(String(g.n), sx, sy + 0.5);
+          ctx.font = "700 8px 'IBM Plex Mono', ui-monospace, monospace";
+          ctx.fillText(shortCount(g.n), sx, sy + 0.5);
+          if (homN && shtN) {
+            const badge = shortCount(homN);
+            ctx.font = "700 7px 'IBM Plex Mono', ui-monospace, monospace";
+            const bw = Math.max(9, ctx.measureText(badge).width + 4);
+            ctx.fillStyle = "#ff4d4d";
+            ctx.fillRect(sx + rr * 0.35, sy - rr * 0.95, bw, 9);
+            ctx.fillStyle = "#fff5f5";
+            ctx.fillText(badge, sx + rr * 0.35 + bw / 2, sy - rr * 0.95 + 5);
+          }
           if (record) {
+            const tap = coarsePointer.current ? 10 : 0;
             hits.current.push({
               title: `${g.n} incidents`,
               lines: [`${homN} hom · ${shtN} sht`],
               x: sx,
               y: sy,
-              r: rr + 8,
-              cluster: { x: g.x, y: g.y, n: g.n },
+              r: rr + 4 + tap,
+              cluster: { x: g.x, y: g.y, n: g.n, county: clusterCounty },
             });
           }
         }
         ctx.globalAlpha = 1;
       } else {
-        for (const c of plot) drawPin(c, true);
+        for (const c of plot) drawPin(c, true, detailRipple);
       }
 
       if (leads.length) {
@@ -1283,12 +1446,13 @@ export function TnMap({
           ctx.stroke();
           ctx.setLineDash([]);
           if (record) {
+            const tap = coarsePointer.current ? 14 : 0;
             hits.current.push({
               title: "Lead (unconfirmed)",
               lines: crimeTipLines(c),
               x: sx,
               y: sy,
-              r: rr + 10,
+              r: rr + 10 + tap,
               crime: c,
             });
           }
@@ -1435,7 +1599,9 @@ export function TnMap({
       }
       ctx.restore();
     }
-    if (flightsOn) drawRaf.current = requestAnimationFrame(drawDots);
+    if (flightsOn || (clusterRipple && !reduceMotion.current && !busy.current)) {
+      drawRaf.current = requestAnimationFrame(drawDots);
+    }
   }
 
   useEffect(() => {
@@ -1713,13 +1879,21 @@ export function TnMap({
   function pickDotAt(clientX: number, clientY: number) {
     const h = hitAt(clientX, clientY, true);
     if (h?.cluster) {
+      const cluster = h.cluster;
       stealClick.current = true;
       skipSelect.current = true;
       setTip(null);
-      const span = Math.max(8, (viewRef.current.w * 0.42) / Math.max(1, Math.log2(h.cluster.n + 1)));
+      if (!selected && cluster.county) {
+        const county = COUNTIES.find((c) => c.name === cluster.county);
+        if (county) {
+          onSelect(county);
+          return true;
+        }
+      }
+      const span = Math.max(8, (viewRef.current.w * 0.42) / Math.max(1, Math.log2(cluster.n + 1)));
       animateTo({
-        x: h.cluster.x - span / 2,
-        y: h.cluster.y - span / 2,
+        x: cluster.x - span / 2,
+        y: cluster.y - span / 2,
         w: span,
         h: span * 0.55,
       });
@@ -1978,7 +2152,7 @@ export function TnMap({
                       : fillColor(county?.pop ?? 8000, isSel, dim, wx, streets && isSel)
                   }
                   stroke={isSel ? "var(--color-fg)" : dim ? "transparent" : "var(--color-grid)"}
-                  strokeWidth={isSel ? (streets ? 0.08 : zoomed ? 0.85 : 1.35) : zoomed ? 0 : 0.55}
+                  strokeWidth={isSel ? (streets ? 0.08 : zoomed ? 0.85 : 1.35) : zoomed ? 0 : 1.35}
                   filter={isSel && !streets ? "url(#line-glow-hot)" : undefined}
                   className={dim ? "pointer-events-none" : zoomed ? undefined : "cursor-pointer"}
                   pointerEvents={dim ? "none" : "auto"}
@@ -2120,14 +2294,16 @@ export function TnMap({
                           fill="none"
                           stroke="transparent"
                           strokeWidth={zoomed ? 1.6 : 3}
-                          className={showZips ? undefined : "cursor-pointer"}
-                          pointerEvents={showZips ? "none" : "auto"}
-                          onMouseEnter={(e) =>
-                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"])
-                          }
-                          onMouseMove={(e) =>
-                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"])
-                          }
+                          className={showZips || showCrime ? undefined : "cursor-pointer"}
+                          pointerEvents={showZips || showCrime ? "none" : "auto"}
+                          onMouseEnter={(e) => {
+                            if (showCrime && hitAt(e.clientX, e.clientY, true)) return;
+                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"]);
+                          }}
+                          onMouseMove={(e) => {
+                            if (showCrime && hitAt(e.clientX, e.clientY, true)) return;
+                            showTip(e, r.id, [arterial ? "Arterial" : "Interstate", "Corridor trace — not live traffic"]);
+                          }}
                           onMouseLeave={() => setTip(null)}
                         />
                         <path
@@ -2329,9 +2505,20 @@ export function TnMap({
           </div>
         </div>
       ) : null}
+      {selected && onBackToState ? (
+        <button
+          type="button"
+          onClick={onBackToState}
+          aria-label="Back to state"
+          className="absolute top-2 left-2 z-30 inline-flex h-8 items-center gap-1 border border-grid/50 bg-elevated/95 px-2 font-mono text-[10px] tracking-widest text-grid uppercase hover:bg-grid/15"
+        >
+          <ChevronLeft className="size-3.5" />
+          STATE
+        </button>
+      ) : null}
       {tip && !picked && !pickedCam && !pickedSor ? (
         <div
-          className="pointer-events-none absolute z-10 w-56 border border-line bg-elevated/95 px-3 py-2 shadow-glow"
+          className="pointer-events-none absolute z-10 w-56 border border-line bg-elevated/95 px-3 py-2 shadow-glow map-card-pop"
           style={tipStyle(tip)}
         >
           <div className="text-sm font-medium">{tip.title}</div>
@@ -2345,7 +2532,7 @@ export function TnMap({
       {picked ? (
         <div
           data-map-card
-          className="pointer-events-auto absolute bottom-2 left-12 z-20 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+          className="map-card-pop pointer-events-auto absolute bottom-2 left-12 z-20 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
@@ -2458,8 +2645,8 @@ export function TnMap({
           data-map-card
           className={
             selected
-              ? "pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
-              : "pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              ? "map-card-pop pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              : "map-card-pop pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
           }
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
@@ -2504,8 +2691,8 @@ export function TnMap({
           data-map-card
           className={
             selected
-              ? "pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
-              : "pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              ? "map-card-pop pointer-events-auto absolute bottom-2 left-12 z-30 w-[min(22rem,calc(100%-4.5rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
+              : "map-card-pop pointer-events-auto absolute top-2 left-2 z-30 w-[min(22rem,calc(100%-1rem))] border border-line bg-elevated/95 px-3 py-2.5 shadow-glow"
           }
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}

@@ -3,7 +3,32 @@
 Tennessee county situation monitor — map, news, markets, crime, sit briefs.
 
 - Latest build: https://daisy-opal-arch-summit.grok.me
-- Production domain: https://grid.blakehassler.com
+- Production domain: https://grid.blastpad.app
+
+## UX preview playtest
+
+Use the **Vercel Preview URL on the PR** — not production, not `grid.blastpad.app`.
+
+1. Open the Preview URL from the pull request.
+2. Hard-refresh once (`Cmd/Ctrl-Shift-R`) so the top ticker, hex state view, and Isolate HOM chip load.
+3. Pass the existing Google 404 gate the same way as production.
+4. Turn on **Crime**. YTD stays the default. Snapshot data prefers live `https://grid.blastpad.app/crime-tn.json`.
+
+Included in this preview:
+
+- Horizontal **news ticker / crawl at the very top** (temp + airports · DJI/COMP · US Debt · headlines). Right rail fully collapsed so the map is taller.
+- Statewide **hexbin / H3-style** aggregation (compact cells, count + HOM/SHT dual fill / badge) while `stateZoom < 1.4`.
+- Mid-zoom: compact markers + tiny pulse. Motion loading-ripple only near pin zoom (`intoFit ≥ 6`), hard-capped ~8px.
+- Persistent HOM / SHT / LEAD ops bar **under the map** (no flash of zeros on load)
+- First-run dismissible tips (localStorage)
+- **Isolate HOM** action (always visible on Crime). SHT on → **Isolate HOM**; SHT off → pressed **Show SHT**. Stays visible if HOM is deselected.
+- Always-visible **STATE** when a county is drilled
+- Crime pin/cluster hits beat Roads; larger phone tap targets
+- TODAY empty-state one-liner
+- Light 150ms popup scale/opacity — no Lottie
+- Metro agency chips (MEM / NASH / CHAT / REST) removed
+
+Do not promote this preview to production. Palette, Lead purple, YTD default, gate, and the crime merge pipeline are unchanged.
 
 ## Put this version on grid.blakehassler.com
 
