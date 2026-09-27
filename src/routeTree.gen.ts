@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
 import { Route as ApiCountyAboutRouteImport } from './routes/api/county-about'
 import { Route as ApiCrimeLiveRouteImport } from './routes/api/crime-live'
+import { Route as ApiCrimeSnapRouteImport } from './routes/api/crime-snap'
 import { Route as ApiCrimeNamesRouteImport } from './routes/api/crime-names'
 import { Route as ApiCrimeRefreshRouteImport } from './routes/api/crime-refresh'
 import { Route as ApiDebtRouteImport } from './routes/api/debt'
@@ -52,6 +53,11 @@ const ApiCountyAboutRoute = ApiCountyAboutRouteImport.update({
 const ApiCrimeLiveRoute = ApiCrimeLiveRouteImport.update({
   id: '/api/crime-live',
   path: '/api/crime-live',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCrimeSnapRoute = ApiCrimeSnapRouteImport.update({
+  id: '/api/crime-snap',
+  path: '/api/crime-snap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCrimeNamesRoute = ApiCrimeNamesRouteImport.update({
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/county-about': typeof ApiCountyAboutRoute
   '/api/crime-live': typeof ApiCrimeLiveRoute
+  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
   '/api/debt': typeof ApiDebtRoute
@@ -152,6 +159,7 @@ export interface FileRoutesByTo {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/county-about': typeof ApiCountyAboutRoute
   '/api/crime-live': typeof ApiCrimeLiveRoute
+  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
   '/api/debt': typeof ApiDebtRoute
@@ -174,6 +182,7 @@ export interface FileRoutesById {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/county-about': typeof ApiCountyAboutRoute
   '/api/crime-live': typeof ApiCrimeLiveRoute
+  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
   '/api/debt': typeof ApiDebtRoute
@@ -197,6 +206,7 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/county-about'
     | '/api/crime-live'
+    | '/api/crime-snap'
     | '/api/crime-names'
     | '/api/crime-refresh'
     | '/api/debt'
@@ -218,6 +228,7 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/county-about'
     | '/api/crime-live'
+    | '/api/crime-snap'
     | '/api/crime-names'
     | '/api/crime-refresh'
     | '/api/debt'
@@ -239,6 +250,7 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/county-about'
     | '/api/crime-live'
+    | '/api/crime-snap'
     | '/api/crime-names'
     | '/api/crime-refresh'
     | '/api/debt'
@@ -261,6 +273,7 @@ export interface RootRouteChildren {
   ApiAlertsRoute: typeof ApiAlertsRoute
   ApiCountyAboutRoute: typeof ApiCountyAboutRoute
   ApiCrimeLiveRoute: typeof ApiCrimeLiveRoute
+  ApiCrimeSnapRoute: typeof ApiCrimeSnapRoute
   ApiCrimeNamesRoute: typeof ApiCrimeNamesRoute
   ApiCrimeRefreshRoute: typeof ApiCrimeRefreshRoute
   ApiDebtRoute: typeof ApiDebtRoute
@@ -312,6 +325,13 @@ declare module '@tanstack/react-router' {
       path: '/api/crime-live'
       fullPath: '/api/crime-live'
       preLoaderRoute: typeof ApiCrimeLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/crime-snap': {
+      id: '/api/crime-snap'
+      path: '/api/crime-snap'
+      fullPath: '/api/crime-snap'
+      preLoaderRoute: typeof ApiCrimeSnapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/crime-names': {
@@ -421,6 +441,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAlertsRoute: ApiAlertsRoute,
   ApiCountyAboutRoute: ApiCountyAboutRoute,
   ApiCrimeLiveRoute: ApiCrimeLiveRoute,
+  ApiCrimeSnapRoute: ApiCrimeSnapRoute,
   ApiCrimeNamesRoute: ApiCrimeNamesRoute,
   ApiCrimeRefreshRoute: ApiCrimeRefreshRoute,
   ApiDebtRoute: ApiDebtRoute,

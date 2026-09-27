@@ -78,7 +78,9 @@ export async function dropCrimeResponseCaches() {
         const cache = await caches.open(key);
         const reqs = await cache.keys();
         await Promise.all(
-          reqs.filter((req) => req.url.includes("/crime-tn.json")).map((req) => cache.delete(req)),
+          reqs
+            .filter((req) => req.url.includes("/crime-tn.json") || req.url.includes("/api/crime-snap"))
+            .map((req) => cache.delete(req)),
         );
       }),
     );

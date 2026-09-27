@@ -195,9 +195,9 @@ export function GridApp() {
       crimeSnapAt.current = now;
       const gen = ++crimeSnapGen.current;
       const run = (attempt: number) => {
-        // no-store: the browser must not reuse a pre-merge body. The query is
-        // for the browser cache only — Vercel static cache ignores ?v=.
-        fetch(`/crime-tn.json?v=${Date.now()}`, {
+        // /api/crime-snap is this deploy's file on a URL the Sep 21 /crime-tn.json
+        // cache entry cannot satisfy. no-store covers the browser disk cache.
+        fetch(`/api/crime-snap?v=${Date.now()}`, {
           cache: "no-store",
           signal: ac.signal,
           headers: { Accept: "application/json", "Cache-Control": "no-cache", Pragma: "no-cache" },
