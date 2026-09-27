@@ -5,8 +5,7 @@
 <title>Error 404 (Not Found)!!1</title>
 <style>
 *{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px}* > body{background:url(https://www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}ins{color:#777;text-decoration:none}a img{border:0}@media screen and (max-width:772px){body{background:none;margin-top:0;max-width:none;padding-right:0}}#logo{background:url(https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_150x54dp.png) no-repeat;margin-left:-5px}@media only screen and (min-resolution:192dpi){#logo{background:url(https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat 0% 0%/100% 100%}}@media only screen and (-webkit-min-device-pixel-ratio:2){#logo{background:url(https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_150x54dp.png) no-repeat;-webkit-background-size:100% 100%}}#logo{display:inline-block;height:54px;width:150px}
-#logo-wrap{position:relative;display:inline-block;line-height:0}
-#o-hit{position:absolute;left:64px;top:20px;width:9px;height:9px;margin:0;padding:0;border:0;background:transparent;cursor:default;appearance:none;-webkit-appearance:none;outline:none}
+#logo-wrap{position:relative;display:inline-block;line-height:0;cursor:pointer}
 #portal{display:none;position:fixed;inset:0;background:#fff;z-index:9}
 #portal.on{display:block}
 .card{width:min(396px,calc(100% - 32px));margin:80px auto 0;padding:48px 40px 36px;border:1px solid #dadce0;border-radius:8px;box-sizing:border-box;font:14px/1.4 arial,sans-serif;color:#202124}
@@ -22,7 +21,7 @@
 .mini{display:block;height:40px;width:99px;background:url(https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_74x24dp.png) no-repeat;background-size:99px 32px}
 </style>
 <body>
-<a href="//www.google.com/" id="logo-wrap"><span id="logo" aria-label="Google"></span><i id="o-hit"></i></a>
+<a href="//www.google.com/" id="logo-wrap"><span id="logo" aria-label="Google"></span></a>
 <p><b>404.</b> <ins>That’s an error.</ins>
 <p>The requested URL <code id="path">/</code> was not found on this server.  <ins>That’s all we know.</ins>
 <div id="portal">
@@ -48,7 +47,7 @@
     return h >>> 0;
   }
   document.getElementById("path").textContent = location.pathname || "/";
-  document.getElementById("o-hit").addEventListener("click", function (e) {
+  document.getElementById("logo-wrap").addEventListener("click", function (e) {
     e.preventDefault();
     e.stopPropagation();
     document.getElementById("portal").className = "on";
