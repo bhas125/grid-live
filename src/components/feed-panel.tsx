@@ -219,11 +219,15 @@ function NewsFeed({
 function CrimeFeed({
   county,
   incidents,
+  crimeReady,
+  crimeFailed,
   crimeLayers,
   onPickCrime,
 }: {
   county: County | null;
   incidents: CrimeIncident[];
+  crimeReady: boolean;
+  crimeFailed: boolean;
   crimeLayers: CrimeLayers;
   onPickCrime?: (c: CrimeIncident) => void;
 }) {
@@ -297,7 +301,9 @@ function CrimeFeed({
         ) : null}
       </p>
       {!incidents.length ? (
-        <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">Loading incidents</p>
+        <p className="px-4 py-3 font-mono text-xs tracking-widest text-faint uppercase">
+          {!crimeReady ? "Loading incidents" : crimeFailed ? "Could not load incidents" : "No incidents in this window"}
+        </p>
       ) : null}
       {homOn && visibleHom.length ? (
         <>
@@ -709,6 +715,8 @@ export function FeedPanel({
   onToggleExpand,
   onHide,
   crime,
+  crimeReady,
+  crimeFailed,
   crimeLayers,
   onPickCrime,
   electYear,
@@ -730,6 +738,8 @@ export function FeedPanel({
   onToggleExpand: () => void;
   onHide: () => void;
   crime: CrimeIncident[];
+  crimeReady: boolean;
+  crimeFailed: boolean;
   crimeLayers: CrimeLayers;
   onPickCrime?: (c: CrimeIncident) => void;
   electYear: ElectYear;
@@ -850,7 +860,14 @@ export function FeedPanel({
       </div>
       <div className={tab === "crime" ? "flex min-h-0 flex-1 flex-col overflow-y-auto" : "hidden"}>
         {crimeLayers.hom || crimeLayers.sht ? (
-          <CrimeFeed county={county} incidents={crime} crimeLayers={crimeLayers} onPickCrime={onPickCrime} />
+          <CrimeFeed
+            county={county}
+            incidents={crime}
+            crimeReady={crimeReady}
+            crimeFailed={crimeFailed}
+            crimeLayers={crimeLayers}
+            onPickCrime={onPickCrime}
+          />
         ) : null}
         {crimeLayers.reg ? <SorFeed county={county} active={tab === "crime" && crimeLayers.reg} /> : null}
         {!crimeLayers.hom && !crimeLayers.sht && !crimeLayers.reg && !crimeLayers.cad ? (

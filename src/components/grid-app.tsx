@@ -24,6 +24,14 @@ import type {
 } from "@/data/types";
 import { COUNTY_XY } from "@/lib/county-xy";
 import { centroid, countyFipsAt, geomLonLatBBox, nearestCountyName, type MapPin } from "@/lib/geo";
+import { isFresh48 } from "@/lib/crime-fresh";
+import {
+  applyCrimeSnap,
+  crimeSnapRows,
+  dropCrimeResponseCaches,
+  MIN_CRIME_SNAP,
+  snapshotLooksStale,
+} from "@/lib/crime-snap";
 import { filterCrime, isDispatch, windowLabel } from "@/lib/crime-window";
 import { prefetchNews } from "@/lib/news-cache";
 import { cn, fmtNum } from "@/lib/utils";
@@ -56,25 +64,8 @@ const DEFAULT_LAYERS: Layers = {
 const DEFAULT_CRIME: CrimeLayers = { hom: true, sht: true, reg: false, cad: false };
 const DEFAULT_RACE: RaceLayers = { w: true, b: true, h: true, a: true, o: true };
 const DEFAULT_AGENCY: CrimeAgencies = { mem: true, nash: true, cha: true, rest: true };
-/** Min gap between /crime-tn.json reads (crime-tab return and tab focus). */
+/** Min gap between ordinary /crime-tn.json reads. A stale in-memory file bypasses this. */
 const CRIME_SNAP_MS = 60_000;
-
-function crimeSnapRows(data: unknown): CrimeIncident[] {
-  const rows = Array.isArray(data) ? (data as CrimeIncident[]) : [];
-  return rows.filter((r) => r.source !== "MNPD_CAD" && r.type !== "Dispatch");
-}
-
-/** File rows replace by id. Keep in-session official adds the snapshot does not have yet. */
-function applyCrimeSnap(prev: CrimeIncident[], snap: CrimeIncident[]): CrimeIncident[] {
-  if (!snap.length) return prev;
-  if (!prev.length) return snap;
-  const byId = new Map(snap.map((r) => [r.id, r]));
-  for (const r of prev) {
-    if (byId.has(r.id) || r.source === "News" || r.source === "GVA") continue;
-    byId.set(r.id, r);
-  }
-  return [...byId.values()];
-}
 
 type FeedSize = "hidden" | "dock" | "open";
 
@@ -119,6 +110,8 @@ export function GridApp() {
   const [races, setRaces] = useState<Race[] | undefined>(undefined);
   const [briefs, setBriefs] = useState<Record<string, string>>({});
   const [crime, setCrime] = useState<CrimeIncident[]>([]);
+  const [crimeReady, setCrimeReady] = useState(false);
+  const [crimeFailed, setCrimeFailed] = useState(false);
   const [crimeLayers, setCrimeLayers] = useState<CrimeLayers>(DEFAULT_CRIME);
   const [crimeAgency, setCrimeAgency] = useState<CrimeAgencies>(DEFAULT_AGENCY);
   const [crimeWindow, setCrimeWindow] = useState<CrimeWindow>("ytd");
@@ -134,6 +127,9 @@ export function GridApp() {
   const [zipFocus, setZipFocus] = useState<{ lon: number; lat: number } | null>(null);
   const crimeSnapAt = useRef(0);
   const crimeSnapGen = useRef(0);
+  const crimeRef = useRef(crime);
+  crimeRef.current = crime;
+  const loadSnapRef = useRef<(force: boolean) => void>(() => undefined);
 
   useEffect(() => {
     fetch("/tn-counties.geojson")
@@ -164,16 +160,23 @@ export function GridApp() {
   }, []);
 
   useEffect(() => {
-    if (tab !== "crime" && !layers.crime) return;
     let live = true;
+    const ac = new AbortController();
     const mergeLive = (next: CrimeIncident[]) => {
       if (!live) return;
       const rows = next.filter(
-        (r) => !isDispatch(r) && r.source !== "MNPD_CAD" && r.type !== "Dispatch" && r.source !== "News",
+        (r) =>
+          !isDispatch(r) &&
+          r.source !== "MNPD_CAD" &&
+          r.type !== "Dispatch" &&
+          r.source !== "News" &&
+          isFresh48(r.date),
       );
       if (!rows.length) return;
+      // Never paint the live endpoint by itself. A partial DB read was showing
+      // up as a stale 7d list while the statewide file was still in flight.
       setCrime((prev) => {
-        if (!prev.length) return rows;
+        if (prev.length < MIN_CRIME_SNAP) return prev;
         const have = new Map(prev.map((r) => [r.id, r]));
         let added = 0;
         for (const r of rows) {
@@ -185,32 +188,52 @@ export function GridApp() {
         return added ? [...have.values()] : prev;
       });
     };
-    const loadSnap = () => {
+    const loadSnap = (force: boolean) => {
       const now = Date.now();
-      if (now - crimeSnapAt.current < CRIME_SNAP_MS) return;
+      const stale = snapshotLooksStale(crimeRef.current, now);
+      if (!force && !stale && now - crimeSnapAt.current < CRIME_SNAP_MS) return;
       crimeSnapAt.current = now;
       const gen = ++crimeSnapGen.current;
-      // no-store plus a unique query so a post-merge refresh cannot reuse a stale browser or CDN body.
-      fetch(`/crime-tn.json?v=${now}`, { cache: "no-store" })
-        .then((r) => {
-          if (!r.ok) throw new Error(String(r.status));
-          return r.json();
+      const run = (attempt: number) => {
+        // no-store: the browser must not reuse a pre-merge body. The query is
+        // for the browser cache only — Vercel static cache ignores ?v=.
+        fetch(`/crime-tn.json?v=${Date.now()}`, {
+          cache: "no-store",
+          signal: ac.signal,
+          headers: { Accept: "application/json", "Cache-Control": "no-cache", Pragma: "no-cache" },
         })
-        .then((d: unknown) => {
-          if (gen !== crimeSnapGen.current) return;
-          const rows = crimeSnapRows(d);
-          if (!rows.length) {
+          .then((r) => {
+            if (!r.ok) throw new Error(String(r.status));
+            return r.json();
+          })
+          .then((d: unknown) => {
+            if (!live || gen !== crimeSnapGen.current) return;
+            const rows = crimeSnapRows(d);
+            if (rows.length < MIN_CRIME_SNAP) throw new Error("short snapshot");
+            setCrime((prev) => applyCrimeSnap(prev, rows));
+            setCrimeFailed(false);
+            setCrimeReady(true);
+          })
+          .catch((err: unknown) => {
+            if (!live || gen !== crimeSnapGen.current) return;
+            if (err instanceof DOMException && err.name === "AbortError") return;
             crimeSnapAt.current = 0;
-            return;
-          }
-          setCrime((prev) => applyCrimeSnap(prev, rows));
-        })
-        .catch(() => {
-          if (gen === crimeSnapGen.current) crimeSnapAt.current = 0;
-        });
+            if (attempt < 2) {
+              window.setTimeout(() => {
+                if (live && gen === crimeSnapGen.current) run(attempt + 1);
+              }, 400 * (attempt + 1));
+              return;
+            }
+            if (crimeRef.current.length < MIN_CRIME_SNAP) setCrimeFailed(true);
+            setCrimeReady(true);
+          });
+      };
+      run(0);
     };
+    loadSnapRef.current = loadSnap;
     const loadLive = () => {
       if (document.visibilityState === "hidden") return;
+      if (crimeRef.current.length < MIN_CRIME_SNAP) return;
       fetch("/api/crime-live", { signal: AbortSignal.timeout(2500) })
         .then((r) => r.json())
         .then((d: { incidents?: CrimeIncident[]; kind?: string }) => {
@@ -220,44 +243,36 @@ export function GridApp() {
         })
         .catch(() => undefined);
     };
-    loadSnap();
-    const wait = window.setTimeout(loadLive, 900);
-    const poll = window.setInterval(loadLive, 60 * 60_000);
-    let waitR = 0;
-    try {
-      const last = Number(sessionStorage.getItem("grid-crime-refresh") || 0);
-      if (Date.now() - last > 24 * 60 * 60_000) {
-        waitR = window.setTimeout(() => {
-          fetch("/api/crime-refresh", { signal: AbortSignal.timeout(8000) })
-            .then((r) => r.json())
-            .then(() => {
-              try {
-                sessionStorage.setItem("grid-crime-refresh", String(Date.now()));
-              } catch {
-                /* ignore */
-              }
-              if (live) loadLive();
-            })
-            .catch(() => undefined);
-        }, 8000);
-      }
-    } catch {
-      /* ignore */
-    }
+    let poll = 0;
+    let wait = 0;
+    void dropCrimeResponseCaches().finally(() => {
+      if (!live) return;
+      loadSnap(true);
+      wait = window.setTimeout(loadLive, 900);
+      poll = window.setInterval(() => {
+        loadSnap(snapshotLooksStale(crimeRef.current));
+        loadLive();
+      }, CRIME_SNAP_MS);
+    });
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
-      loadSnap();
+      loadSnap(snapshotLooksStale(crimeRef.current));
       loadLive();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
       live = false;
-      window.clearTimeout(wait);
-      if (waitR) window.clearTimeout(waitR);
-      window.clearInterval(poll);
+      ac.abort();
+      if (wait) window.clearTimeout(wait);
+      if (poll) window.clearInterval(poll);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [tab, layers.crime]);
+  }, []);
+
+  useEffect(() => {
+    if (crimeWindow !== "48h" && crimeWindow !== "7d" && crimeWindow !== "today") return;
+    loadSnapRef.current(snapshotLooksStale(crimeRef.current));
+  }, [crimeWindow]);
 
   useEffect(() => {
     if (!selected || !layers.race) {
@@ -663,6 +678,8 @@ export function GridApp() {
         onToggleExpand={toggleFeed}
         onHide={() => setFeed("hidden")}
         crime={visibleCrime}
+        crimeReady={crimeReady}
+        crimeFailed={crimeFailed}
         crimeLayers={crimeLayers}
         onPickCrime={goToIncident}
         electYear={electYear}

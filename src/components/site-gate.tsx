@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { releaseStaleWorker } from "@/lib/crime-snap";
 
 export function SiteGate({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -17,6 +18,9 @@ export function SiteGate({ children }: { children: React.ReactNode }) {
       if (e.data && (e.data as { bh?: number }).bh === 1) setOpen(true);
     }
     window.addEventListener("message", onMsg);
+    void releaseStaleWorker().then((reload) => {
+      if (reload) window.location.reload();
+    });
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
