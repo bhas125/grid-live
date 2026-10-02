@@ -14,9 +14,9 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ApiAlertsRouteImport } from './routes/api/alerts'
 import { Route as ApiCountyAboutRouteImport } from './routes/api/county-about'
 import { Route as ApiCrimeLiveRouteImport } from './routes/api/crime-live'
-import { Route as ApiCrimeSnapRouteImport } from './routes/api/crime-snap'
 import { Route as ApiCrimeNamesRouteImport } from './routes/api/crime-names'
 import { Route as ApiCrimeRefreshRouteImport } from './routes/api/crime-refresh'
+import { Route as ApiCrimeSnapRouteImport } from './routes/api/crime-snap'
 import { Route as ApiDebtRouteImport } from './routes/api/debt'
 import { Route as ApiDispatchRouteImport } from './routes/api/dispatch'
 import { Route as ApiFinanceNewsRouteImport } from './routes/api/finance-news'
@@ -55,11 +55,6 @@ const ApiCrimeLiveRoute = ApiCrimeLiveRouteImport.update({
   path: '/api/crime-live',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiCrimeSnapRoute = ApiCrimeSnapRouteImport.update({
-  id: '/api/crime-snap',
-  path: '/api/crime-snap',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiCrimeNamesRoute = ApiCrimeNamesRouteImport.update({
   id: '/api/crime-names',
   path: '/api/crime-names',
@@ -68,6 +63,11 @@ const ApiCrimeNamesRoute = ApiCrimeNamesRouteImport.update({
 const ApiCrimeRefreshRoute = ApiCrimeRefreshRouteImport.update({
   id: '/api/crime-refresh',
   path: '/api/crime-refresh',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCrimeSnapRoute = ApiCrimeSnapRouteImport.update({
+  id: '/api/crime-snap',
+  path: '/api/crime-snap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDebtRoute = ApiDebtRouteImport.update({
@@ -137,9 +137,9 @@ export interface FileRoutesByFullPath {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/county-about': typeof ApiCountyAboutRoute
   '/api/crime-live': typeof ApiCrimeLiveRoute
-  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
+  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/debt': typeof ApiDebtRoute
   '/api/dispatch': typeof ApiDispatchRoute
   '/api/finance-news': typeof ApiFinanceNewsRoute
@@ -159,9 +159,9 @@ export interface FileRoutesByTo {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/county-about': typeof ApiCountyAboutRoute
   '/api/crime-live': typeof ApiCrimeLiveRoute
-  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
+  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/debt': typeof ApiDebtRoute
   '/api/dispatch': typeof ApiDispatchRoute
   '/api/finance-news': typeof ApiFinanceNewsRoute
@@ -182,9 +182,9 @@ export interface FileRoutesById {
   '/api/alerts': typeof ApiAlertsRoute
   '/api/county-about': typeof ApiCountyAboutRoute
   '/api/crime-live': typeof ApiCrimeLiveRoute
-  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/crime-names': typeof ApiCrimeNamesRoute
   '/api/crime-refresh': typeof ApiCrimeRefreshRoute
+  '/api/crime-snap': typeof ApiCrimeSnapRoute
   '/api/debt': typeof ApiDebtRoute
   '/api/dispatch': typeof ApiDispatchRoute
   '/api/finance-news': typeof ApiFinanceNewsRoute
@@ -206,9 +206,9 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/county-about'
     | '/api/crime-live'
-    | '/api/crime-snap'
     | '/api/crime-names'
     | '/api/crime-refresh'
+    | '/api/crime-snap'
     | '/api/debt'
     | '/api/dispatch'
     | '/api/finance-news'
@@ -228,9 +228,9 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/county-about'
     | '/api/crime-live'
-    | '/api/crime-snap'
     | '/api/crime-names'
     | '/api/crime-refresh'
+    | '/api/crime-snap'
     | '/api/debt'
     | '/api/dispatch'
     | '/api/finance-news'
@@ -250,9 +250,9 @@ export interface FileRouteTypes {
     | '/api/alerts'
     | '/api/county-about'
     | '/api/crime-live'
-    | '/api/crime-snap'
     | '/api/crime-names'
     | '/api/crime-refresh'
+    | '/api/crime-snap'
     | '/api/debt'
     | '/api/dispatch'
     | '/api/finance-news'
@@ -273,9 +273,9 @@ export interface RootRouteChildren {
   ApiAlertsRoute: typeof ApiAlertsRoute
   ApiCountyAboutRoute: typeof ApiCountyAboutRoute
   ApiCrimeLiveRoute: typeof ApiCrimeLiveRoute
-  ApiCrimeSnapRoute: typeof ApiCrimeSnapRoute
   ApiCrimeNamesRoute: typeof ApiCrimeNamesRoute
   ApiCrimeRefreshRoute: typeof ApiCrimeRefreshRoute
+  ApiCrimeSnapRoute: typeof ApiCrimeSnapRoute
   ApiDebtRoute: typeof ApiDebtRoute
   ApiDispatchRoute: typeof ApiDispatchRoute
   ApiFinanceNewsRoute: typeof ApiFinanceNewsRoute
@@ -327,13 +327,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCrimeLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/crime-snap': {
-      id: '/api/crime-snap'
-      path: '/api/crime-snap'
-      fullPath: '/api/crime-snap'
-      preLoaderRoute: typeof ApiCrimeSnapRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/crime-names': {
       id: '/api/crime-names'
       path: '/api/crime-names'
@@ -346,6 +339,13 @@ declare module '@tanstack/react-router' {
       path: '/api/crime-refresh'
       fullPath: '/api/crime-refresh'
       preLoaderRoute: typeof ApiCrimeRefreshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/crime-snap': {
+      id: '/api/crime-snap'
+      path: '/api/crime-snap'
+      fullPath: '/api/crime-snap'
+      preLoaderRoute: typeof ApiCrimeSnapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/debt': {
@@ -441,9 +441,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAlertsRoute: ApiAlertsRoute,
   ApiCountyAboutRoute: ApiCountyAboutRoute,
   ApiCrimeLiveRoute: ApiCrimeLiveRoute,
-  ApiCrimeSnapRoute: ApiCrimeSnapRoute,
   ApiCrimeNamesRoute: ApiCrimeNamesRoute,
   ApiCrimeRefreshRoute: ApiCrimeRefreshRoute,
+  ApiCrimeSnapRoute: ApiCrimeSnapRoute,
   ApiDebtRoute: ApiDebtRoute,
   ApiDispatchRoute: ApiDispatchRoute,
   ApiFinanceNewsRoute: ApiFinanceNewsRoute,
