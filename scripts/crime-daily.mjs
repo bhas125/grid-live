@@ -95,6 +95,9 @@ const NEWS_DROP_IDS = new Set([
   "NEWS-2026-10-26-Johnson-S",
   "NEWS-2026-10-30-Johnson-H",
   "NEWS-2026-10-28-Davidson-H",
+  "NEWS-2026-10-30-Knox-S",
+  "NEWS-2026-10-27-Knox-S",
+  "NEWS-2026-10-28-Montgomery-H",
 ]);
 
 function streetish(addr) {
