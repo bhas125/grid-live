@@ -14,3 +14,4 @@ AGENTS.project.md
 .grok
 /tmp
 *.xlsx
+.env*

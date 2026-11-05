@@ -1137,6 +1137,44 @@ export function TnMap({
       ctx.fill();
     }
 
+    if (houseOnRef.current && districts.length) {
+      ctx.save();
+      ctx.strokeStyle = "#c9a45c";
+      ctx.fillStyle = "#c9a45c";
+      ctx.lineWidth = zoomedNow ? 1.15 : 0.85;
+      ctx.lineJoin = "round";
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath();
+      for (const h of districts) {
+        if (h.maxX < cur.x - 2 || h.minX > cur.x + cur.w + 2 || h.maxY < cur.y - 2 || h.minY > cur.y + cur.h + 2) continue;
+        const ring = h.ring;
+        if (ring.length < 3) continue;
+        const p0 = ring[0];
+        ctx.moveTo((p0.x - cur.x) * s + ox, (p0.y - cur.y) * s + oy);
+        for (let i = 1; i < ring.length; i++) {
+          const p = ring[i];
+          ctx.lineTo((p.x - cur.x) * s + ox, (p.y - cur.y) * s + oy);
+        }
+        ctx.closePath();
+      }
+      ctx.stroke();
+      if (zoomedNow) {
+        ctx.font = "600 10px 'IBM Plex Mono', ui-monospace, monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.globalAlpha = 0.92;
+        for (const hd of districts) {
+          const bw = (hd.maxX - hd.minX) * s;
+          if (bw < 26) continue;
+          const sx = (hd.x - cur.x) * s + ox;
+          const sy = (hd.y - cur.y) * s + oy;
+          if (sx < 8 || sy < 8 || sx > w - 8 || sy > h - 8) continue;
+          ctx.fillText(String(hd.d), sx, sy);
+        }
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
     if (crimeOn && pts.length) {
       const kinds = crimeKindRef.current;
       const now = Date.now();
@@ -1168,7 +1206,7 @@ export function TnMap({
       const dense = isDenseCounty(selectedRef.current?.name);
       const stateZoom = FULL_VIEW.w / Math.max(1, cur.w);
       const overRace = showZipsRef.current;
-      const wantCluster = !zoomedNow || (dense && ratio < 2.2);
+      const wantCluster = false && (!zoomedNow || (dense && ratio < 2.2));
       const metro = new Set(["Shelby", "Davidson", "Hamilton", "Knox"]);
 
       const pinColor = (c: CrimePt) => {
@@ -1398,43 +1436,6 @@ export function TnMap({
       }
     }
     ctx.globalAlpha = 1;
-    if (houseOnRef.current && districts.length) {
-      ctx.save();
-      ctx.strokeStyle = "#c9a45c";
-      ctx.fillStyle = "#c9a45c";
-      ctx.lineWidth = zoomedNow ? 1.15 : 0.85;
-      ctx.lineJoin = "round";
-      ctx.globalAlpha = 0.9;
-      ctx.beginPath();
-      for (const h of districts) {
-        if (h.maxX < cur.x - 2 || h.minX > cur.x + cur.w + 2 || h.maxY < cur.y - 2 || h.minY > cur.y + cur.h + 2) continue;
-        const ring = h.ring;
-        if (ring.length < 3) continue;
-        const p0 = ring[0];
-        ctx.moveTo((p0.x - cur.x) * s + ox, (p0.y - cur.y) * s + oy);
-        for (let i = 1; i < ring.length; i++) {
-          const p = ring[i];
-          ctx.lineTo((p.x - cur.x) * s + ox, (p.y - cur.y) * s + oy);
-        }
-        ctx.closePath();
-      }
-      ctx.stroke();
-      if (zoomedNow) {
-        ctx.font = "600 10px 'IBM Plex Mono', ui-monospace, monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.globalAlpha = 0.92;
-        for (const hd of districts) {
-          const bw = (hd.maxX - hd.minX) * s;
-          if (bw < 26) continue;
-          const sx = (hd.x - cur.x) * s + ox;
-          const sy = (hd.y - cur.y) * s + oy;
-          if (sx < 8 || sy < 8 || sx > w - 8 || sy > h - 8) continue;
-          ctx.fillText(String(hd.d), sx, sy);
-        }
-      }
-      ctx.restore();
-    }
     if (flightsOn) drawRaf.current = requestAnimationFrame(drawDots);
   }
 
