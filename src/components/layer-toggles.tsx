@@ -15,14 +15,12 @@ import type {
 import { AGENCY_META, CRIME_META, RACE_META, WINDOW_META } from "@/data/types";
 
 const ITEMS: { id: LayerId; label: string }[] = [
-  { id: "interstates", label: "Roads" },
   { id: "weather", label: "Weather" },
   { id: "sites", label: "Data Cent." },
   { id: "flock", label: "Flock" },
   { id: "cameras", label: "Traffic Cam" },
   { id: "flights", label: "Flights" },
   { id: "dispatch", label: "Dispatch" },
-  { id: "house", label: "House" },
 ];
 
 export function LayerToggles({
@@ -65,6 +63,33 @@ export function LayerToggles({
   return (
     <div className="pointer-events-auto min-w-0">
       <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <ExpandChip
+          label="Crime"
+          on={layers.crime}
+          open={crimeOpen}
+          onToggle={() => onToggle("crime")}
+          onOpen={() => setCrimeOpen((v) => !v)}
+        />
+        <ExpandChip
+          label="Race"
+          on={layers.race}
+          open={raceOpen}
+          onToggle={() => onToggle("race")}
+          onOpen={() => setRaceOpen((v) => !v)}
+        />
+        <button
+          type="button"
+          onClick={() => onToggle("house")}
+          aria-pressed={layers.house}
+          className={cn(
+            "h-6 min-w-0 shrink-0 border px-1.5 font-mono text-[10px] tracking-widest whitespace-nowrap uppercase",
+            layers.house
+              ? "border-grid bg-grid/15 text-grid"
+              : "border-line bg-surface/90 text-faint hover:border-muted hover:text-muted",
+          )}
+        >
+          House
+        </button>
         {ITEMS.map((item) => {
           const on = layers[item.id];
           return (
@@ -84,20 +109,6 @@ export function LayerToggles({
             </button>
           );
         })}
-        <ExpandChip
-          label="Crime"
-          on={layers.crime}
-          open={crimeOpen}
-          onToggle={() => onToggle("crime")}
-          onOpen={() => setCrimeOpen((v) => !v)}
-        />
-        <ExpandChip
-          label="Race"
-          on={layers.race}
-          open={raceOpen}
-          onToggle={() => onToggle("race")}
-          onOpen={() => setRaceOpen((v) => !v)}
-        />
       </div>
       {layers.crime && crimeOpen ? (
         <>

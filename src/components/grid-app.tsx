@@ -47,7 +47,7 @@ const COUNTIES = countiesJson as County[];
 const BY_FIPS = new Map(COUNTIES.map((c) => [c.fips, c]));
 
 const DEFAULT_LAYERS: Layers = {
-  interstates: true,
+  interstates: false,
   weather: false,
   sites: false,
   flock: false,
