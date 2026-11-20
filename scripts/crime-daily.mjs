@@ -22,6 +22,9 @@ const NEWS_SKIP =
 
 /** Ids Crime Finder / Dev1 permanently dropped — GHA must not re-add from RSS. */
 const NEWS_DROP_IDS = new Set([
+  "NEWS-2026-11-18-White-S",
+  "NEWS-2026-11-17-Knox-S",
+  "NEWS-2026-11-18-Sullivan-H",
   "NEWS-2026-09-12-Davidson-H",
   "NEWS-2026-09-11-Davidson-H",
   "NEWS-2026-09-10-Hamilton-S",
